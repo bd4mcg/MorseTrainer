@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>CW 电键训练室 · COM 口点划教学</title><link rel="stylesheet" href="style.css"></head>
 <body><main>
-<header><a href="/" class="brand"><span class="brand-icon">− · − ·</span><span>CW <b>TRAINER</b><small>电键训练室</small></span></a><div class="header-status"><i id="connectionLight"></i><span id="connectionLabel">未选择串口 · 串口未连接</span><button id="openSettings" class="square" aria-label="设置" title="设置">⚙</button></div></header>
+<header><a href="./" class="brand"><span class="brand-icon">− · − ·</span><span>CW <b>TRAINER</b><small>电键训练室</small></span></a><div class="header-status"><i id="connectionLight"></i><span id="connectionLabel">未选择串口 · 串口未连接</span><button id="openSettings" class="square" aria-label="设置" title="设置">⚙</button></div></header>
 <div class="layout"><div class="workspace">
 <section class="panel trainer"><div class="section-head"><h2>CW 拍发练习</h2><span id="sourceBadge" class="badge">等待 COM 电键</span></div>
 <div class="question-controls"><div><label for="practiceType">练习模式</label><select id="practiceType"><option value="character">字母</option><option value="word">单词</option><option value="callsign">呼号</option><option value="qcode">Q简语</option><option value="cw">缩语</option><option value="sentence">句子</option></select></div><fieldset id="characterPools" aria-label="出题范围"><label class="check"><input id="poolLetter" type="checkbox" value="letter" checked> 字母</label><label class="check"><input id="poolDigit" type="checkbox" value="digit" checked> 数字</label><label class="check"><input id="poolSymbol" type="checkbox" value="symbol"> 符号</label></fieldset><span id="questionNumber">第 1 题</span></div>
@@ -20,13 +20,14 @@
 </div></div><dialog id="settingsDialog" aria-labelledby="settingsTitle"><div class="section-head"><h2 id="settingsTitle">练习设置</h2><button id="closeSettings" aria-label="关闭设置">✕ 关闭</button></div><aside>
 <section class="panel settings"><h2><span>04</span> 电键与串口</h2>
 <p class="help">手键输入：按下多长就记录多长，松开后检查点划长度。</p>
-<p class="help">首次使用需在浏览器弹窗中选择并授权串口。浏览器不提供 COM 编号，这里显示授权串口及 USB 标识。</p><label for="port">本地串口</label><div class="field-row"><select id="port" aria-label="本地串口"><option value="">正在读取…</option></select><button id="refreshPorts" class="square" title="选择或授权串口" aria-label="选择或授权串口">选择</button></div>
+<label for="port">COM 端口</label><div class="field-row"><select id="port" aria-label="COM 端口"><option value="">选择串口…</option></select><button id="refreshPorts" class="square" title="刷新端口" aria-label="刷新端口">↻</button></div>
 <div class="field-row"><div><label id="keyPinLabel" for="keyPin">手键输入</label><select id="keyPin"><option value="cts">CTS · 8 脚</option><option value="dsr">DSR · 6 脚</option><option value="cd">DCD · 1 脚</option></select></div><div><label for="keyPolarity">按下电平</label><select id="keyPolarity"><option value="high">高电平</option><option value="low">低电平</option></select></div></div>
 
 <label for="rts">公共端 · RTS 7 脚</label><select id="rts"><option value="high">输出高电平</option><option value="low">输出低电平</option></select>
 <button id="checkLevels" class="full">电平检查</button><p id="levelCheckStatus" class="help" role="status">连接串口检查实际电平；退出设置后自动断开，不计入练习。</p>
-<p id="samplingStatus" class="help">浏览器轮询测时，请保持页面在前台；实际精度取决于设备、驱动和浏览器。</p><div class="pin-monitor" aria-label="串口实际电平"><span id="pinCts">CTS <b>—</b></span><span id="pinDsr">DSR <b>—</b></span><span id="pinCd">DCD <b>—</b></span></div>
+<div class="pin-monitor" aria-label="串口实际电平"><span id="pinCts">CTS <b>—</b></span><span id="pinDsr">DSR <b>—</b></span><span id="pinCd">DCD <b>—</b></span></div>
 
+<p id="serialDiagnostic" class="help" role="status">尚未读取电平。</p><p class="help">浏览器不会提供 COM 号码；首次连接时请在浏览器选择窗口中核对 COM 口。若读取次数增加但电平不变，请核对所选端口、RTS 和接线。网页需保持在前台。</p>
 <details class="wiring"><summary>接线与电平检查</summary><p>电键公共端接 DB9 的 <b>7 脚 RTS</b>，触点另一端接所选的 CTS（8）、DSR（6）或 DCD（1）。</p><p>脚号按 DB9 定义；7 脚不是地线，地线是 5 脚。需使用引出这些握手信号的串口适配器。先看上方电平指示，确认松开与按下能够稳定切换，再选择按下电平。</p><p>DTR 不启用。本程序只用于电键输入与本机侧音，不控制发射机。</p></details>
 </section>
 <section class="panel settings"><h2><span>05</span> 训练标准</h2>
@@ -34,6 +35,7 @@
 <label for="tolerance">允许偏差</label><select id="tolerance"><option value="0.1">严格 ±10%</option><option value="0.2" selected>日常 ±20%</option><option value="0.3">入门 ±30%</option></select>
 <label class="check"><input id="sound" type="checkbox" checked> 开启本机侧音 <span>700 Hz</span></label>
 
+<label class="check"><input id="autoReference" type="checkbox"> 拍发前播放标准码</label><p class="help">勾选后，开始练习及每道新题先播放标准码，播放结束后再拍发。</p>
 <label for="holdSeconds">发完后保留结果（秒）</label><input id="holdSeconds" type="number" min="0" max="30" step="0.5" value="1.5"><p class="help">0–30 秒；设为 0 时，识别完成且松键后立即出下一题。</p>
 
 </section></aside><div class="cookie-settings"><button id="clearCookies">清除 Cookie · 恢复默认设置</button><p id="cookieStatus" class="help" role="status">设置更改后自动保存到 Cookie，有效期一年。</p></div><p class="help">呼号文件：项目目录下 callsign.txt，每行一个呼号，保存后在呼号练习中点击“重新读取呼号文件”。</p></dialog><footer>COM 电键输入 · 本地测时 · 无麦克风 / 无上传 <span>标准：点 1、划 3、码内 1、字母 3、单词 7</span></footer>

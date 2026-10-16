@@ -1,46 +1,63 @@
 export class BrowserSerial {
- constructor({serial=globalThis.navigator?.serial,secure=globalThis.isSecureContext,emit=()=>{},now=()=>performance.now(),schedule=setTimeout,cancel=clearTimeout}={}){
-  Object.assign(this,{serial,secure,emit,now,schedule,cancel});this.ports=[];this.port=null;this.generation=0;this.opening=null;this.polling=null;this.timer=null;this.armed=false;
-  serial?.addEventListener('disconnect',e=>{if(e.target===this.port||e.port===this.port)this.fail(new Error('串口设备已拔出。'));});
+ constructor({serial=globalThis.navigator?.serial,emit=()=>{},now=()=>performance.now(),sleep=ms=>new Promise(r=>setTimeout(r,ms))}={}) {
+  this.serial=serial;this.emit=emit;this.now=now;this.sleep=sleep;this.ports=[];this.generation=0;
+  serial?.addEventListener('disconnect',e=>{if(e.target===this.port||e.port===this.port)this.disconnect().catch(e=>this.emit({type:'warning',message:e.message}));});
  }
- supported(){if(!this.secure)throw new Error('串口访问需要 HTTPS，或本机 localhost 地址。');if(!this.serial)throw new Error('当前浏览器不支持 Web Serial，请使用支持串口的桌面浏览器（如 Chrome 或 Edge）。');}
- async list(){this.supported();this.ports=await this.serial.getPorts();return this.ports.map((p,i)=>({id:String(i),label:this.label(p,i)}));}
- label(p,i){const info=p.getInfo();const usb=info.usbVendorId?` · USB ${info.usbVendorId.toString(16).padStart(4,'0')}:${(info.usbProductId||0).toString(16).padStart(4,'0')}`:'';return `串口 ${i+1}${usb}`;}
- async choose(){this.supported();const p=await this.serial.requestPort();if(!this.ports.includes(p))this.ports.push(p);return String(this.ports.indexOf(p));}
- async connect(config){
-  this.supported();if(this.port||this.opening)throw new Error('串口正在使用。');
-  const generation=++this.generation;
-  // requestPort must run directly in the user click, before unrelated awaits.
+ check(){if(!this.serial)throw new Error('请使用桌面 Chrome / Edge，并通过 HTTPS 或 localhost 打开网页。');}
+ async list(){this.check();for(const p of await this.serial.getPorts())if(!this.ports.includes(p))this.ports.push(p);return this.ports.map((p,i)=>{const info=p.getInfo();return {id:String(i),label:`已授权串口 ${i+1}${info.usbVendorId?` · USB ${info.usbVendorId.toString(16).padStart(4,'0')}:${(info.usbProductId||0).toString(16).padStart(4,'0')}`:''}`};});}
+ connect(config){
+  this.check();if(this.pending||this.port)throw new Error('串口正在连接或已连接，请先断开。');
+  const epoch=++this.generation;
+  // requestPort must run synchronously within the click, before any await.
   const selection=this.ports[Number(config.port)]&&config.port!==''?Promise.resolve(this.ports[Number(config.port)]):this.serial.requestPort();
-  const task=(async()=>{
-   const port=await selection;if(generation!==this.generation)throw new Error('连接已取消。');
-   if(!this.ports.includes(port))this.ports.push(port);
-   this.emit({type:'selected',id:String(this.ports.indexOf(port)),label:this.label(port,this.ports.indexOf(port))});
-   await port.open({baudRate:9600,flowControl:'none'});this.port=port;
-   try{await port.setSignals({requestToSend:config.rtsHigh,dataTerminalReady:false});if(generation!==this.generation)throw new Error('连接已取消。');
-    this.config=config;this.armed=false;this.lastDown=false;this.lastSample=null;this.lastRaw=null;this.lastReport=-Infinity;await this.sample(generation);
-    if(generation!==this.generation)throw new Error('连接已取消。');
-    this.emit({type:'status',connected:true,connecting:false,armed:this.armed});this.queue(generation);
-    return {connected:true,armed:this.armed};
-   }catch(e){await this.release();throw e;}
-  })();this.opening=task;
-  try{return await task;}finally{if(this.opening===task)this.opening=null;}
+  const task=this.open(selection,config,epoch);this.pending=task;
+  task.finally(()=>{if(this.pending===task)this.pending=null;}).catch(()=>{});return task;
  }
- async sample(generation){
-  const signals=await this.port.getSignals();if(generation!==this.generation)return;
+ async open(selection,c,epoch){
+  let p,opened=false;
+  try{
+   p=await selection;if(epoch!==this.generation)return {connected:false};
+   if(!this.ports.includes(p))this.ports.push(p);
+   await p.open({baudRate:9600,dataBits:8,stopBits:1,parity:'none',flowControl:'none'});opened=true;
+   if(epoch!==this.generation){await p.close();return {connected:false};}
+   await p.setSignals({requestToSend:!!c.rtsHigh,dataTerminalReady:false});
+   const initial=await p.getSignals();
+   if(epoch!==this.generation){await p.close();return {connected:false};}
+   this.port=p;this.config=c;this.armed=false;this.stable=null;this.candidate=null;this.samples=0;this.previous=null;this.changes={cts:0,dsr:0,cd:0};this.lastSample=null;this.maxInterval=0;this.lastReport=-Infinity;
+   this.emit({type:'status',connected:true,connecting:false,armed:false});
+   this.sample(initial);this.loopTask=this.loop(epoch);
+   return {connected:true,armed:this.armed};
+  }catch(e){if(opened)try{await p.close();}catch{};if(epoch!==this.generation)return {connected:false};
+   throw new Error(e.name==='NotFoundError'?'未选择串口。':`${e.message}。请确认旧版程序及其它串口软件已断开此端口。`);
+  }
+ }
+ sample(signals){
   const t=this.now(),raw={cts:signals.clearToSend,dsr:signals.dataSetReady,cd:signals.dataCarrierDetect};
-  if(Object.values(raw).some(v=>typeof v!=='boolean'))throw new Error('驱动未提供完整的 CTS / DSR / DCD 电平。');
-  const down=raw[this.config.keyPin]!==this.config.keyLow;
-  if(!this.armed&&!down)this.armed=true;
-  const snapshot=JSON.stringify(raw)+this.armed;if(snapshot!==this.lastRaw){this.emit({type:'inputs',dot:down,dash:false,armed:this.armed,raw});this.lastRaw=snapshot;}
-  if(this.lastSample!==null&&t-this.lastReport>=250){this.emit({type:'sampling',ms:t-this.lastSample});this.lastReport=t;}this.lastSample=t;
-  if(this.armed&&down!==this.lastDown){this.lastDown=down;this.emit({type:'edge',down,t});}
+  if(Object.values(raw).some(x=>typeof x!=='boolean'))throw new Error('浏览器未返回完整的 CTS / DSR / DCD 电平');
+  if(this.lastSample!==null)this.maxInterval=Math.max(this.maxInterval,t-this.lastSample);this.lastSample=t;this.samples++;
+  for(const k of Object.keys(raw))if(this.previous&&this.previous[k]!==raw[k])this.changes[k]++;
+  const changed=!this.previous||Object.keys(raw).some(k=>raw[k]!==this.previous[k]);this.previous=raw;
+  const down=this.config.keyLow?!raw[this.config.keyPin]:raw[this.config.keyPin];
+  if(down!==this.candidate){this.candidate=down;this.candidateAt=t;}
+  if(t-this.candidateAt>=3&&this.stable!==down){
+   this.stable=down;
+   if(!this.armed&&!down){this.armed=true;this.emit({type:'armed',message:'输入就绪，请开始拍发。'});}
+   else if(this.armed)this.emit({type:'edge',down,t:this.candidateAt});
+  }
+  if(changed||t-this.lastReport>=250){
+   this.lastReport=t;this.emit({type:'inputs',raw,dot:down,dash:false,armed:this.armed});
+   this.emit({type:'diagnostic',samples:this.samples,changes:{...this.changes},maxInterval:this.maxInterval,rts:this.config.rtsHigh});
+  }
  }
- queue(generation){this.timer=this.schedule(async()=>{
-  if(generation!==this.generation)return;
-  try{this.polling=this.sample(generation);await this.polling;if(generation===this.generation)this.queue(generation);}catch(e){await this.fail(e);}finally{this.polling=null;}
- },2);}
- async release(){const p=this.port;this.port=null;if(p){try{await p.setSignals({requestToSend:false,dataTerminalReady:false});}catch{}await p.close();}}
- async disconnect(){++this.generation;this.cancel(this.timer);if(this.opening)await this.opening.catch(()=>{});if(this.polling)await this.polling.catch(()=>{});await this.release();this.armed=false;this.emit({type:'status',connected:false,connecting:false,armed:false});}
- async fail(error){++this.generation;this.cancel(this.timer);try{await this.release();}catch{}this.emit({type:'status',connected:false,connecting:false,armed:false,message:`串口读取中断：${error.message}`});}
+ async loop(epoch){
+  try{while(epoch===this.generation){await this.sleep(2);if(epoch!==this.generation)break;const value=await this.port.getSignals();if(epoch===this.generation)this.sample(value);}}
+  catch(e){if(epoch===this.generation){this.emit({type:'warning',message:`读取电平失败：${e.message}`});void this.disconnect();}}
+ }
+ async disconnect(){
+  ++this.generation;
+  // A chooser cannot be dismissed programmatically; cancellation invalidates it.
+  await this.loopTask;this.loopTask=null;
+  const p=this.port;if(p){await p.close();this.port=null;}
+  this.emit({type:'status',connected:false,connecting:false,armed:false});return {connected:false};
+ }
 }

@@ -3,14 +3,15 @@ import {nextPrompt,questionComplete,retentionMs,reviewReady,BANK_FILES,parsePrac
 import {makeLesson,Practice,checkTiming,CODES} from './morse.js';
 const $=id=>document.getElementById(id),ms=n=>`${Math.round(n)} ms`,signed=n=>`${n>=0?'+':'−'}${Math.abs(Math.round(n))}`;
 const SETTINGS_COOKIE='cw_trainer_settings';
-const settingsDefaults={keyPin:'cts',keyPolarity:'high',rts:'high',wpm:'15',tolerance:'0.2',sound:true,holdSeconds:'1.5',practiceType:'character',poolLetter:true,poolDigit:true,poolSymbol:false,zoom:'22'};
+const settingsDefaults={keyPin:'cts',keyPolarity:'high',rts:'high',wpm:'15',tolerance:'0.2',sound:true,autoReference:false,holdSeconds:'1.5',practiceType:'character',poolLetter:true,poolDigit:true,poolSymbol:false,zoom:'22'};
 function validSettings(value){
  const result={...settingsDefaults};
  if(!value||typeof value!=='object')return result;
  for(const [id,choices] of Object.entries({keyPin:['cts','dsr','cd'],keyPolarity:['high','low'],rts:['high','low'],tolerance:['0.1','0.2','0.3'],practiceType:['character','word','callsign','qcode','cw','sentence']}))if(choices.includes(value[id]))result[id]=value[id];
 
+
  for(const [id,min,max] of [['wpm',5,40],['holdSeconds',0,30],['zoom',12,40]])if(value[id]!==''&&value[id]!=null&&Number.isFinite(Number(value[id]))&&Number(value[id])>=min&&Number(value[id])<=max)result[id]=String(value[id]);
- for(const id of ['sound','poolLetter','poolDigit','poolSymbol'])if(typeof value[id]==='boolean')result[id]=value[id];
+ for(const id of ['sound','autoReference','poolLetter','poolDigit','poolSymbol'])if(typeof value[id]==='boolean')result[id]=value[id];
  if(!result.poolLetter&&!result.poolDigit&&!result.poolSymbol)result.poolLetter=true;
  return result;
 }
@@ -35,13 +36,13 @@ let banks={},selectedMode='character',callsigns=[],operation=0,stopping=false,ch
 let prompt=nextPrompt('character'),questionNumber=1,reviewAt=null,lastEdgeWall=0;
 let lesson=makeLesson(prompt),practice=new Practice(lesson),running=false,source='com',connected=false,connecting=false,armed=false,token='',busy=false;
 let rawDown=false,rawDash=false,outputDown=false,clock=null,inputOwner=null,serialOffset=null,held={key:false};
-const serial=new BrowserSerial({emit:handleSerialPacket});
-let audio=null,osc=null,gain=null,playing=false,playTimer=null,playResolve=null,playVersion=0,referenceGain=null,lastFrame=0,currentIndex=0;
+let audio=null,osc=null,gain=null,playing=false,automaticReference=false,playTimer=null,playResolve=null,playVersion=0,referenceGain=null,lastFrame=0,currentIndex=0;
 function say(text){$('message').textContent=text;}
 const tolerance=()=>Number($('tolerance').value);
 const pools=()=>['poolLetter','poolDigit','poolSymbol'].filter(id=>$(id).checked).map(id=>$(id).value);
 const holdSeconds=()=>retentionMs($('holdSeconds').value)/1000;
 const captureTime=()=>performance.now();
+function portLabel(){return $('port').value!==''?$('port').selectedOptions[0]?.textContent||'已授权串口':'未选择串口';}
 function lock(){
  const frozen=running||playing||busy;
  $('openSettings').disabled=running||busy||connecting||stopping||closingSettings;
@@ -59,8 +60,8 @@ function lock(){
  $('listen').textContent=playing?'■ 停止标准码':'♫ 听本题标准码';
  $('keyboardPad').hidden=!running;
  $('connectionLight').classList.toggle('on',connected);
- $('connectionLabel').textContent=`${$('port').selectedOptions?.[0]?.textContent||'未选择串口'} · ${connecting?'正在连接串口':connected?(armed?'输入就绪':'请松开电键'):'串口未连接'}`;
- $('sourceBadge').textContent=running?`${$('port').selectedOptions?.[0]?.textContent||'串口'} · 手键 / 空格`:connected?`${$('port').selectedOptions?.[0]?.textContent||'串口'} · 手键`:'等待开始练习';
+ $('connectionLabel').textContent=`${portLabel()} · ${connecting?'正在连接串口':connected?(armed?'输入就绪':'请松开电键'):'串口未连接'}`;
+ $('sourceBadge').textContent=running?`${portLabel()} · 手键 / 空格`:connected?`${portLabel()} · 手键`:'等待开始练习';
 }
 function reset(){
  try{lesson=makeLesson(prompt,Number($('wpm').value));}catch(e){say(e.message);return false;}
@@ -89,7 +90,7 @@ async function start(input='com'){
  if(running||playing||busy||connecting||$('settingsDialog').open||closingSettings)return;
  const request=++operation;source=input;busy=true;lock();
  try{
-  const audioReady=ensureAudio().catch(()=>{});
+  void ensureAudio().catch(()=>say('无法播放侧音，将继续静音练习。'));
   if(request!==operation)return;
   if(input==='com'){
    if(connected)await api('/api/disconnect',{});
@@ -100,12 +101,11 @@ async function start(input='com'){
    connected=state.connected;connecting=false;armed=state.armed||armed;
   }
   if(request!==operation)return;
-  await audioReady;if(request!==operation)return;
   if(!reset())return;
   source=input;running=true;
   say(input==='keyboard'?'键盘练习已开始，按住空格或下方按钮发报。':input==='com'&&!armed?'串口已连接，请松开电键，随后即可开始发送。':'连续练习已开始，请发送本题。');
  }catch(e){if(request===operation){connecting=false;say(`无法开始练习：${e.message}`);}}
- finally{if(request===operation){busy=false;lock();}}
+ finally{if(request===operation){busy=false;lock();autoListen();}}
 }
 async function finish(){
  if(stopping)return;stopping=true;
@@ -181,21 +181,21 @@ function render(){
  $('details').innerHTML=marks.length?marks.map((m,i)=>{const g=i?practice.gaps[i-1]:null;return `<tr><td>${i+1} / ${m.expected?.char??'额外'} ${m.expected?(m.expected.symbol==='.'?'·':'−'):''}</td><td>${ms(m.actual)} / ${m.target===null?'—':ms(m.target)}</td><td class="${m.ok?'good':'bad'}">${m.delta===null?'—':`${signed(m.delta)} ms / ${signed(m.error*100)}%`}</td><td class="${g&&!g.ok?'bad':''}">${g?`${ms(g.actual)} / ${g.target===null?'—':ms(g.target)}`:'—'}${g?`<small>${g.kind}间距 · ${g.label}</small>`:''}</td><td class="${m.ok&&m.correct?'good':'bad'}">${m.target===null?'额外信号':`${m.label}${!m.correct?' · 类型不符':''}`}</td></tr>`;}).reverse().join(''):'<tr><td colspan="5" class="empty">每次松键后，显示点划长度；下一次按下后，显示间隔长度。</td></tr>';
  timeline(now);
 }
+const serial=new BrowserSerial({emit:handleSerialPacket});
 async function api(path,data){
- if(path==='/api/connect')return serial.connect(data);
+ if(path==='/api/connect'){
+  const state=await serial.connect(data);await refreshPorts();return state;
+ }
  if(path==='/api/disconnect')return serial.disconnect();
- throw new Error('不支持的串口操作');
+ throw new Error('未知操作');
 }
-async function refreshPorts(selected){
- try{const ports=await serial.list();$('port').replaceChildren(new Option('点击开始时选择串口',''));
- for(const p of ports)$('port').add(new Option(p.label,p.id));
- if(selected!==undefined&&ports.some(p=>p.id===selected))$('port').value=selected;
- else if(ports.length===1)$('port').value=ports[0].id;
- }catch(e){say(e.message);$('levelCheckStatus').textContent=e.message;}finally{lock();}
+async function refreshPorts(){
+ $('refreshPorts').disabled=true;
+ try{const ports=await serial.list(),previous=$('port').value;$('port').replaceChildren(new Option('选择其它串口…',''));for(const p of ports)$('port').add(new Option(p.label,p.id));$('port').value=serial.port?String(serial.ports.indexOf(serial.port)):ports.some(p=>p.id===previous)?previous:ports[0]?.id||'';}
+ catch(e){say(e.message);}finally{lock();}
 }
-$('refreshPorts').onclick=async()=>{try{const selection=await serial.choose();await refreshPorts(selection);}catch(e){say(e.name==='NotFoundError'?'已取消选择串口。':e.message);}};
 function inputEdge(device,down,t){
- if(!running)return;
+ if(!running||automaticReference)return;
  if(down){if(inputOwner!==null)return;inputOwner=device;}
  else {if(inputOwner!==device)return;inputOwner=null;}
  edge(down,Math.max(t,practice.lastTime));
@@ -210,16 +210,17 @@ function serialEdge(down,t){
 function stopReference(){
  ++playVersion;clearTimeout(playTimer);playTimer=null;
  if(referenceGain){referenceGain.gain.cancelScheduledValues(audio.currentTime);referenceGain.gain.setValueAtTime(0,audio.currentTime);}
- playing=false;const resolve=playResolve;playResolve=null;resolve?.();lock();
+ const wasAutomatic=automaticReference;automaticReference=false;playing=false;if(wasAutomatic&&running)say(inputsReleased()?'标准码播放结束，请开始拍发。':'标准码播放结束，请先松开电键或空格，再开始拍发。');const resolve=playResolve;playResolve=null;resolve?.();lock();
 }
-async function listen(){
+function autoListen(){if(running&&$('autoReference').checked&&!playing&&!busy)void listen(true);}
+async function listen(automatic=false){
  if(playing){stopReference();return;}
- const version=++playVersion;playing=true;lock();
+ const version=++playVersion;playing=true;automaticReference=automatic===true;lock();
  try{
   await ensureAudio(true);if(version!==playVersion)return;
   const start=audio.currentTime+.12;
   for(const m of lesson.marks){const t=start+m.start/1000,end=t+m.duration/1000;referenceGain.gain.setValueAtTime(0,t);referenceGain.gain.linearRampToValueAtTime(.14,t+.002);referenceGain.gain.setValueAtTime(.14,end-.002);referenceGain.gain.linearRampToValueAtTime(0,end);}
-  say('正在播放本题标准码，已发记录保留。');
+  say(automaticReference?'先听本题标准码，播放结束后开始拍发。':'正在播放本题标准码，已发记录保留。');
   await new Promise(resolve=>{playResolve=resolve;playTimer=setTimeout(resolve,lesson.duration+300);});
  }catch(e){say(`无法播放标准码：${e.message}`);}finally{if(version===playVersion)stopReference();}
 }
@@ -227,7 +228,7 @@ function inputsReleased(){return !(rawDown||rawDash||outputDown||held.key||input
 function changeQuestion(){
  if(!inputsReleased()||practice.downAt!==null){say('请先松开电键，等当前点划结束后换题。');return false;}
  try{prompt=nextPrompt($('practiceType').value,prompt,Math.random,pools(),callsigns,banks);}catch(e){if(running)finish();say(e.message);return false;}selectedMode=$('practiceType').value;questionNumber++;reset();
- say(running?'新题已就绪，请继续发送。':'已随机出题，点击开始练习。');lock();return true;
+ say(running?'新题已就绪，请继续发送。':'已随机出题，点击开始练习。');lock();autoListen();return true;
 }
 function checkAdvance(){
  if(!running||playing||busy)return;
@@ -251,13 +252,13 @@ function practiceModeUI(){
  $('callsignControls').hidden=$('practiceType').value!=='callsign';
 }
 async function loadCallsigns(){
- const response=await fetch('callsign.txt',{cache:'no-store'});if(!response.ok)throw new Error('无法读取 callsign.txt。');const data=parseCallsigns(await response.text());callsigns=data.callsigns;
+ const response=await fetch('./callsign.txt',{cache:'no-store'});if(!response.ok)throw new Error('无法读取 callsign.txt');const data=parseCallsigns(await response.text());callsigns=data.callsigns;
  $('callsignStatus').textContent=`callsign.txt · ${callsigns.length} 个呼号${data.invalid.length?` · 跳过 ${data.invalid.length} 行无效内容`:''}`;
  if(!callsigns.length)throw new Error('callsign.txt 尚无有效呼号。请每行填写一个呼号（字母、数字或 /），保存后重新读取。');
 }
 async function loadPracticeBank(mode){
  const file=BANK_FILES[mode];
- const response=await fetch(file,{cache:'no-store'});
+ const response=await fetch('./'+file,{cache:'no-store'});
  if(!response.ok)throw new Error(`无法读取 ${file}，请确认文件位于程序目录中。`);
  try{banks[mode]=parsePracticeBank(await response.text());}catch(e){throw new Error(`${file}：${e.message}`);}
 }
@@ -316,7 +317,7 @@ $('settingsDialog').oncancel=e=>{e.preventDefault();return closeSettings();};
 $('settingsDialog').onclose=()=>{if(!closingSettings&&(checkingLevels||connected||connecting))return closeSettings();};
 practiceModeUI();
 for(const id of ['wpm','tolerance'])$(id).addEventListener('input',reset);
-$('clear').onclick=changeQuestion;$('listen').onclick=listen;
+$('clear').onclick=changeQuestion;$('listen').onclick=()=>listen();
 $('sound').onchange=()=>{tone(false);if($('sound').checked)ensureAudio().catch(e=>say(e.message));};
 for(const [id,key] of [['keyButton','key']]){
  $(id).onpointerdown=e=>{e.preventDefault();$(id).setPointerCapture(e.pointerId);keyInput(key,true);};
@@ -327,25 +328,27 @@ window.addEventListener('keydown',e=>{if(!running||$('settingsDialog').open||e.t
 window.addEventListener('keyup',e=>{if(keyMap[e.code]&&held.key){e.preventDefault();keyInput(keyMap[e.code],false);}});
 window.addEventListener('blur',()=>{if(held.key)keyInput('key',false);});
 $('port').onchange=lock;$('zoom').oninput=render;
-$('start').onclick=()=>start('com');$('finish').onclick=finish;
+$('refreshPorts').onclick=refreshPorts;$('start').onclick=()=>start('com');$('finish').onclick=finish;
 if(savedSettings)applySettings({...savedSettings,practiceType:'character'});
 lock();reset();
 function handleSerialPacket(packet){
- if(packet.type==='selected'){
-  if(!$('port').querySelector(`option[value="${packet.id}"]`))$('port').add(new Option(packet.label,packet.id));$('port').value=packet.id;lock();
- }else if(packet.type==='status'){
-  const was=connected;connected=packet.connected;connecting=packet.connecting;armed=packet.armed;
-  if(!connected){clearSerialState();if(was&&running)finish();}
-  if(packet.message){say(packet.message);$('levelCheckStatus').textContent=packet.message;}lock();
- }else if(packet.type==='inputs'){
-  rawDown=packet.dot;rawDash=false;armed=packet.armed;
-  for(const [id,key] of [['pinCts','cts'],['pinDsr','dsr'],['pinCd','cd']]){$(id).classList.toggle('high',packet.raw[key]);$(id).querySelector('b').textContent=packet.raw[key]?'高':'低';}lock();
- }else if(packet.type==='edge')serialEdge(packet.down,packet.t);
- else if(packet.type==='sampling')$('samplingStatus').textContent=`最近采样间隔：${packet.ms.toFixed(1)} ms（浏览器轮询，非硬件时间戳）`;
+  if(packet.type==='diagnostic'){
+   $('serialDiagnostic').textContent=`已读取 ${packet.samples} 次 · 最近读取 ${new Date().toLocaleTimeString()} · 最大采样间隔 ${packet.maxInterval.toFixed(1)} ms · RTS ${packet.rts?'高':'低'} · DTR 低；变化次数 CTS ${packet.changes.cts} / DSR ${packet.changes.dsr} / DCD ${packet.changes.cd}`;
+  }else if(packet.type==='status'){
+   const was=connected;connected=packet.connected;connecting=packet.connecting;armed=packet.armed===true;
+   if(!connected){armed=false;rawDown=false;rawDash=false;outputDown=false;for(const id of ['pinCts','pinDsr','pinCd']){$(id).className='';$(id).querySelector('b').textContent='—';}if(was&&running&&source==='com')finish();}
+   if(packet.inputSnapshot){rawDown=packet.inputSnapshot.dot;rawDash=packet.inputSnapshot.dash;for(const [id,key] of [['pinCts','cts'],['pinDsr','dsr'],['pinCd','cd']]){const high=!!packet.inputSnapshot.raw[key];$(id).classList.toggle('high',high);$(id).querySelector('b').textContent=high?'高':'低';}}
+   if(packet.config){const c=packet.config;if(!$('port').querySelector(`option[value="${c.port}"]`))$('port').add(new Option(c.port,c.port));$('port').value=c.port;$('keyPin').value=c.keyPin;$('keyPolarity').value=c.keyLow?'low':'high';$('rts').value=c.rtsHigh?'high':'low';$('wpm').value=c.wpm;if(!running)reset();lock();}
+   if(packet.message)say(packet.message);lock();
+  }else if(packet.type==='armed'){armed=true;lock();say(packet.message);}
+  else if(packet.type==='inputs'){
+   rawDown=packet.dot;rawDash=packet.dash;armed=packet.armed||armed;
+   for(const [id,key] of [['pinCts','cts'],['pinDsr','dsr'],['pinCd','cd']]){const high=!!packet.raw[key];$(id).classList.toggle('high',high);$(id).querySelector('b').textContent=high?'高':'低';}
+  }else if(packet.type==='edge'){serialEdge(packet.down,packet.t);}
+  else if(packet.type==='warning')say(packet.message);
 }
 await refreshPorts();
-window.addEventListener('pagehide',()=>{serial.disconnect().catch(()=>{});});
-document.addEventListener('visibilitychange',()=>{if(document.hidden&&(running||connected||connecting)){if(running)finish();else closeSettings();say('页面已切到后台，已停止并断开串口，避免后台限速影响测时。');}});
+window.addEventListener('pagehide',()=>{void serial.disconnect();});
 function frame(time){if(time-lastFrame>50&&running){checkAdvance();render();lastFrame=time;}requestAnimationFrame(frame);}requestAnimationFrame(frame);
 
 if(savedSettings){
