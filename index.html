@@ -20,6 +20,7 @@
 </div></div><dialog id="settingsDialog" aria-labelledby="settingsTitle"><div class="section-head"><h2 id="settingsTitle">练习设置</h2><button id="closeSettings" aria-label="关闭设置">✕ 关闭</button></div><aside>
 <section class="panel settings"><h2><span>04</span> 电键与串口</h2>
 <p class="help">手键输入：按下多长就记录多长，松开后检查点划长度。</p>
+<label class="check"><input id="simulation" type="checkbox"> 模拟测试 · 空格拍发</label><p class="help">勾选后，开始练习不连接串口，可用键盘空格或拍发按钮练习。</p>
 <label for="port">COM 端口</label><div class="field-row"><select id="port" aria-label="COM 端口"><option value="">选择串口…</option></select><button id="refreshPorts" class="square" title="刷新端口" aria-label="刷新端口">↻</button></div>
 <div class="field-row"><div><label id="keyPinLabel" for="keyPin">手键输入</label><select id="keyPin"><option value="cts">CTS · 8 脚</option><option value="dsr">DSR · 6 脚</option><option value="cd">DCD · 1 脚</option></select></div><div><label for="keyPolarity">按下电平</label><select id="keyPolarity"><option value="high">高电平</option><option value="low">低电平</option></select></div></div>
 
@@ -39,4 +40,4 @@
 <label for="holdSeconds">发完后保留结果（秒）</label><input id="holdSeconds" type="number" min="0" max="30" step="0.5" value="1.5"><p class="help">0–30 秒；设为 0 时，识别完成且松键后立即出下一题。</p>
 
 </section></aside><div class="cookie-settings"><button id="clearCookies">清除 Cookie · 恢复默认设置</button><p id="cookieStatus" class="help" role="status">设置更改后自动保存到 Cookie，有效期一年。</p></div><p class="help">呼号文件：项目目录下 callsign.txt，每行一个呼号，保存后在呼号练习中点击“重新读取呼号文件”。</p></dialog><footer>COM 电键输入 · 本地测时 · 无麦克风 / 无上传 <span>标准：点 1、划 3、码内 1、字母 3、单词 7</span></footer>
-</main><script type="module" src="app.js?v=20261016-2"></script></body></html>
+</main><script type="module" src="app.js?v=20261016-3"></script></body></html>

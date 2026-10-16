@@ -1,9 +1,9 @@
-import {BrowserSerial} from './web-serial.js?v=20261016-2';
+import {BrowserSerial} from './web-serial.js?v=20261016-3';
 import {nextPrompt,questionComplete,retentionMs,reviewReady,BANK_FILES,parsePracticeBank,parseCallsigns} from './practice-flow.js';
 import {makeLesson,Practice,checkTiming,CODES} from './morse.js';
 const $=id=>document.getElementById(id),ms=n=>`${Math.round(n)} ms`,signed=n=>`${n>=0?'+':'−'}${Math.abs(Math.round(n))}`;
 const SETTINGS_COOKIE='cw_trainer_settings';
-const settingsDefaults={keyPin:'cts',keyPolarity:'high',rts:'high',wpm:'15',tolerance:'0.2',sound:true,autoReference:false,holdSeconds:'1.5',practiceType:'character',poolLetter:true,poolDigit:true,poolSymbol:false,zoom:'22'};
+const settingsDefaults={simulation:false,keyPin:'cts',keyPolarity:'high',rts:'high',wpm:'15',tolerance:'0.2',sound:true,autoReference:false,holdSeconds:'1.5',practiceType:'character',poolLetter:true,poolDigit:true,poolSymbol:false,zoom:'22'};
 function validSettings(value){
  const result={...settingsDefaults};
  if(!value||typeof value!=='object')return result;
@@ -11,7 +11,7 @@ function validSettings(value){
 
 
  for(const [id,min,max] of [['wpm',5,40],['holdSeconds',0,30],['zoom',12,40]])if(value[id]!==''&&value[id]!=null&&Number.isFinite(Number(value[id]))&&Number(value[id])>=min&&Number(value[id])<=max)result[id]=String(value[id]);
- for(const id of ['sound','autoReference','poolLetter','poolDigit','poolSymbol'])if(typeof value[id]==='boolean')result[id]=value[id];
+ for(const id of ['simulation','sound','autoReference','poolLetter','poolDigit','poolSymbol'])if(typeof value[id]==='boolean')result[id]=value[id];
  if(!result.poolLetter&&!result.poolDigit&&!result.poolSymbol)result.poolLetter=true;
  return result;
 }
@@ -44,11 +44,13 @@ const holdSeconds=()=>retentionMs($('holdSeconds').value)/1000;
 const captureTime=()=>performance.now();
 function portLabel(){return $('port').value!==''?$('port').selectedOptions[0]?.textContent||'已授权串口':'未选择串口';}
 function lock(){
- const frozen=running||playing||busy;
+ const frozen=running||playing||busy,simulation=$('simulation').checked;
+ $('simulation').disabled=frozen||connected||connecting||closingSettings;
  $('openSettings').disabled=running||busy||connecting||stopping||closingSettings;
- $('checkLevels').disabled=running||playing||busy||connecting||closingSettings;
+ $('checkLevels').disabled=simulation||running||playing||busy||connecting||closingSettings;
  $('checkLevels').textContent=checkingLevels&&connected?'停止电平检查':'电平检查';
- for(const id of ['port','keyPin','keyPolarity','rts','wpm','refreshPorts'])$(id).disabled=frozen||connected||connecting;
+ for(const id of ['port','keyPin','keyPolarity','rts','refreshPorts'])$(id).disabled=simulation||frozen||connected||connecting;
+ $('wpm').disabled=frozen||connected||connecting;
  $('tolerance').disabled=frozen;
  $('practiceType').disabled=playing||busy;
  $('clear').disabled=playing||busy;
@@ -60,8 +62,9 @@ function lock(){
  $('listen').textContent=playing?'■ 停止标准码':'♫ 听本题标准码';
  $('keyboardPad').hidden=!running;
  $('connectionLight').classList.toggle('on',connected);
- $('connectionLabel').textContent=`${portLabel()} · ${connecting?'正在连接串口':connected?(armed?'输入就绪':'请松开电键'):'串口未连接'}`;
- $('sourceBadge').textContent=running?`${portLabel()} · 手键 / 空格`:connected?`${portLabel()} · 手键`:'等待开始练习';
+ $('connectionLabel').textContent=simulation?'模拟测试 · 无需串口':`${portLabel()} · ${connecting?'正在连接串口':connected?(armed?'输入就绪':'请松开电键'):'串口未连接'}`;
+ $('keyboardHelp').textContent=simulation?'模拟测试：按住空格或下方按钮发报。':'练习中可按住空格或下方按钮发报，也可使用串口手键。';
+ $('sourceBadge').textContent=simulation?(running?'模拟测试 · 空格拍发':'模拟测试 · 等待开始'):running?`${portLabel()} · 手键 / 空格`:connected?`${portLabel()} · 手键`:'等待开始练习';
 }
 function reset(){
  try{lesson=makeLesson(prompt,Number($('wpm').value));}catch(e){say(e.message);return false;}
@@ -104,7 +107,7 @@ async function start(input='com'){
   if(!reset())return;
   source=input;running=true;
   say(input==='keyboard'?'键盘练习已开始，按住空格或下方按钮发报。':input==='com'&&!armed?'串口已连接，请松开电键，随后即可开始发送。':'连续练习已开始，请发送本题。');
- }catch(e){if(request===operation){connecting=false;console.error('CW 开始练习失败',e);say(`无法开始练习：${e.message}（版本 20261016-2）`);}}
+ }catch(e){if(request===operation){connecting=false;console.error('CW 开始练习失败',e);say(`无法开始练习：${e.message}（版本 20261016-3）`);}}
  finally{if(request===operation){busy=false;lock();autoListen();}}
 }
 async function finish(){
@@ -192,7 +195,7 @@ async function api(path,data){
 async function refreshPorts(){
  $('refreshPorts').disabled=true;
  try{const ports=await serial.list(),previous=$('port').value;$('port').replaceChildren(new Option('选择其它串口…',''));for(const p of ports)$('port').add(new Option(p.label,p.id));$('port').value=serial.port?String(serial.ports.indexOf(serial.port)):ports.some(p=>p.id===previous)?previous:ports[0]?.id||'';}
- catch(e){say(e.message);}finally{lock();}
+ catch(e){if(!$('simulation').checked)say(e.message);}finally{lock();}
 }
 function inputEdge(device,down,t){
  if(!running||automaticReference)return;
@@ -291,7 +294,7 @@ async function closeSettings(){
  finally{closingSettings=false;busy=false;lock();}
 }
 $('checkLevels').onclick=async()=>{
- if(running||playing||busy||connecting||closingSettings||!$('settingsDialog').open)return;
+ if($('simulation').checked||running||playing||busy||connecting||closingSettings||!$('settingsDialog').open)return;
  busy=true;lock();
  if(checkingLevels&&connected){
   try{await stopLevelCheck();$('levelCheckStatus').textContent='已停止检查，可修改串口参数。';}catch(e){$('levelCheckStatus').textContent=e.message;}finally{busy=false;lock();}return;
@@ -327,8 +330,9 @@ const keyMap={Space:'key'};
 window.addEventListener('keydown',e=>{if(!running||$('settingsDialog').open||e.target.isContentEditable||/INPUT|SELECT|TEXTAREA/.test(e.target.tagName)||!keyMap[e.code])return;e.preventDefault();if(!e.repeat)keyInput(keyMap[e.code],true);});
 window.addEventListener('keyup',e=>{if(keyMap[e.code]&&held.key){e.preventDefault();keyInput(keyMap[e.code],false);}});
 window.addEventListener('blur',()=>{if(held.key)keyInput('key',false);});
+$('simulation').onchange=()=>{lock();say($('simulation').checked?'模拟测试已开启，点击开始练习后用空格拍发。':'模拟测试已关闭，开始练习时连接串口。');};
 $('port').onchange=lock;$('zoom').oninput=render;
-$('refreshPorts').onclick=refreshPorts;$('start').onclick=()=>start('com');$('finish').onclick=finish;
+$('refreshPorts').onclick=refreshPorts;$('start').onclick=()=>start($('simulation').checked?'keyboard':'com');$('finish').onclick=finish;
 if(savedSettings)applySettings({...savedSettings,practiceType:'character'});
 lock();reset();
 function handleSerialPacket(packet){
