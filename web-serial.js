@@ -9,26 +9,27 @@ export class BrowserSerial {
   this.check();if(this.pending||this.port)throw new Error('串口正在连接或已连接，请先断开。');
   const epoch=++this.generation;
   // requestPort must run synchronously within the click, before any await.
-  const selection=this.ports[Number(config.port)]&&config.port!==''?Promise.resolve(this.ports[Number(config.port)]):this.serial.requestPort();
+  let selection;try{selection=this.ports[Number(config.port)]&&config.port!==''?Promise.resolve(this.ports[Number(config.port)]):this.serial.requestPort({});}catch(e){throw new Error(`选择串口失败：${e.name}: ${e.message}`,{cause:e});}
   const task=this.open(selection,config,epoch);this.pending=task;
   task.finally(()=>{if(this.pending===task)this.pending=null;}).catch(()=>{});return task;
  }
  async open(selection,c,epoch){
-  let p,opened=false;
+  let p,opened=false,stage='选择串口';
   try{
    p=await selection;if(epoch!==this.generation)return {connected:false};
    if(!this.ports.includes(p))this.ports.push(p);
-   await p.open({baudRate:9600,dataBits:8,stopBits:1,parity:'none',flowControl:'none'});opened=true;
+   stage='打开串口';await p.open({baudRate:9600,dataBits:8,stopBits:1,parity:'none',flowControl:'none'});opened=true;
    if(epoch!==this.generation){await p.close();return {connected:false};}
-   await p.setSignals({requestToSend:!!c.rtsHigh,dataTerminalReady:false});
-   const initial=await p.getSignals();
+   stage='设置 RTS / DTR';await p.setSignals({requestToSend:!!c.rtsHigh,dataTerminalReady:false});
+   stage='首次读取电平';const initial=await p.getSignals();
    if(epoch!==this.generation){await p.close();return {connected:false};}
    this.port=p;this.config=c;this.armed=false;this.stable=null;this.candidate=null;this.samples=0;this.previous=null;this.changes={cts:0,dsr:0,cd:0};this.lastSample=null;this.maxInterval=0;this.lastReport=-Infinity;
-   this.emit({type:'status',connected:true,connecting:false,armed:false});
-   this.sample(initial);this.loopTask=this.loop(epoch);
+   stage='更新连接状态';this.emit({type:'status',connected:true,connecting:false,armed:false});
+   stage='处理首次电平';this.sample(initial);this.loopTask=this.loop(epoch);
    return {connected:true,armed:this.armed};
   }catch(e){if(opened)try{await p.close();}catch{};if(epoch!==this.generation)return {connected:false};
-   throw new Error(e.name==='NotFoundError'?'未选择串口。':`${e.message}。请确认旧版程序及其它串口软件已断开此端口。`);
+   if(this.port===p)this.port=null;
+   throw new Error(e.name==='NotFoundError'?'未选择串口。':`${stage}失败：${e.name}: ${e.message}`,{cause:e});
   }
  }
  sample(signals){

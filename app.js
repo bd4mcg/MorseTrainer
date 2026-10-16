@@ -1,4 +1,4 @@
-import {BrowserSerial} from './web-serial.js';
+import {BrowserSerial} from './web-serial.js?v=20261016-2';
 import {nextPrompt,questionComplete,retentionMs,reviewReady,BANK_FILES,parsePracticeBank,parseCallsigns} from './practice-flow.js';
 import {makeLesson,Practice,checkTiming,CODES} from './morse.js';
 const $=id=>document.getElementById(id),ms=n=>`${Math.round(n)} ms`,signed=n=>`${n>=0?'+':'−'}${Math.abs(Math.round(n))}`;
@@ -104,7 +104,7 @@ async function start(input='com'){
   if(!reset())return;
   source=input;running=true;
   say(input==='keyboard'?'键盘练习已开始，按住空格或下方按钮发报。':input==='com'&&!armed?'串口已连接，请松开电键，随后即可开始发送。':'连续练习已开始，请发送本题。');
- }catch(e){if(request===operation){connecting=false;say(`无法开始练习：${e.message}`);}}
+ }catch(e){if(request===operation){connecting=false;console.error('CW 开始练习失败',e);say(`无法开始练习：${e.message}（版本 20261016-2）`);}}
  finally{if(request===operation){busy=false;lock();autoListen();}}
 }
 async function finish(){
