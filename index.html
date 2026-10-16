@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>CW 电键训练室 · COM 口点划教学</title><link rel="stylesheet" href="style.css"></head>
+<body><main>
+<header><a href="/" class="brand"><span class="brand-icon">− · − ·</span><span>CW <b>TRAINER</b><small>电键训练室</small></span></a><div class="header-status"><i id="connectionLight"></i><span id="connectionLabel">未选择串口 · 串口未连接</span><button id="openSettings" class="square" aria-label="设置" title="设置">⚙</button></div></header>
+<div class="layout"><div class="workspace">
+<section class="panel trainer"><div class="section-head"><h2>CW 拍发练习</h2><span id="sourceBadge" class="badge">等待 COM 电键</span></div>
+<div class="question-controls"><div><label for="practiceType">练习模式</label><select id="practiceType"><option value="character">字母</option><option value="word">单词</option><option value="callsign">呼号</option><option value="qcode">Q简语</option><option value="cw">缩语</option><option value="sentence">句子</option></select></div><fieldset id="characterPools" aria-label="出题范围"><label class="check"><input id="poolLetter" type="checkbox" value="letter" checked> 字母</label><label class="check"><input id="poolDigit" type="checkbox" value="digit" checked> 数字</label><label class="check"><input id="poolSymbol" type="checkbox" value="symbol"> 符号</label></fieldset><span id="questionNumber">第 1 题</span></div>
+<div id="callsignControls" hidden><span id="callsignStatus"></span><button id="reloadCallsigns">重新读取呼号文件</button></div>
+
+<div class="practice-actions"><button id="start" class="primary">▶ 开始练习</button><button id="finish" disabled>■ 停止练习</button><button id="clear">↻ 换一题</button><button id="listen">♫ 听本题标准码</button></div>
+<div class="lcd"><div class="lcd-top"><span>CW FOLLOW TRAIN</span><span id="screenSpeed">15 WPM</span></div><div class="screen-legend"><span><i class="standard-key"></i>标准</span><span><i class="actual-key"></i>实发</span><span><i class="bad-key"></i>超出偏差</span><label for="zoom">刻度 <input id="zoom" type="range" min="12" max="40" value="22" aria-label="时间条缩放"></label></div>
+<div id="timelineScroll" class="timeline-scroll"><svg id="timeline" height="164" role="img" aria-label="标准和实际点划长度时间轴"></svg></div><div class="screen-letters"><div><span id="targetLabel">本题目标</span><strong id="targetLetter">—</strong><p id="promptMeaning" class="prompt-meaning" hidden></p><code id="targetCode">− · · −</code></div><div class="letter-divider"></div><div><span>实际识别</span><strong id="receivedLetter">—</strong><code id="receivedCode">等待发报</code></div></div><div class="lcd-bottom"><span id="screenPosition">第 1 / 3 个字母</span><span>同一时间刻度 · 从首次按下对齐</span></div></div>
+<div id="keyboardPad" class="keyboard-pad" hidden><span id="keyboardHelp">练习中可按住空格或下方按钮发报，也可使用串口手键。</span><div><button id="keyButton">按住发报 · 空格</button></div></div>
+<p id="message" class="message" role="status" aria-live="polite">选择练习模式，点击开始练习后自动连接串口。</p>
+</section>
+<section class="panel measurements"><div class="focus-grid"><div><span id="currentLabel">下一个 · 划</span><strong id="currentDuration">— <em>ms</em></strong><small id="currentTarget">标准 240 ms</small></div><div><span>点划长度偏差</span><strong id="currentError">—</strong><small id="currentVerdict">松键后判定</small></div><div><span id="gapLabel">字母间距</span><strong id="gapDuration">— <em>ms</em></strong><small id="gapVerdict">标准 240 ms · 下一次按下后判定</small></div></div>
+</section>
+<section class="results-grid"><div class="panel metric"><span>点划长度合格</span><strong id="markScore">—</strong><small id="markCount">0 / 12 个点划</small></div><div class="panel metric"><span>字母 / 单词间距合格</span><strong id="gapScore">—</strong><small id="gapCount">尚未测到间距</small></div><div class="panel metric"><span>实际点 : 划</span><strong id="ratio">— : —</strong><small>按目标点划归类 · 标准 1 : 3</small></div></section>
+<section class="panel diagnostic"><div class="section-head"><h2><span>03</span> 逐项检查</h2><span id="completion" class="subtle">按目标顺序对照</span></div><div class="table-scroll"><table><thead><tr><th>序号 / 目标</th><th>实测 / 标准长度</th><th>长度偏差</th><th>前间隔 / 标准</th><th>诊断</th></tr></thead><tbody id="details"></tbody></table></div><p class="footnote">点划按目标顺序对照，识别按实际间隔分组。每题发完后停顿至少 3 个点，按设置的保留时长显示结果后自动换题；多字符题漏发字符时可点“换一题”。</p></section>
+</div></div><dialog id="settingsDialog" aria-labelledby="settingsTitle"><div class="section-head"><h2 id="settingsTitle">练习设置</h2><button id="closeSettings" aria-label="关闭设置">✕ 关闭</button></div><aside>
+<section class="panel settings"><h2><span>04</span> 电键与串口</h2>
+<p class="help">手键输入：按下多长就记录多长，松开后检查点划长度。</p>
+<p class="help">首次使用需在浏览器弹窗中选择并授权串口。浏览器不提供 COM 编号，这里显示授权串口及 USB 标识。</p><label for="port">本地串口</label><div class="field-row"><select id="port" aria-label="本地串口"><option value="">正在读取…</option></select><button id="refreshPorts" class="square" title="选择或授权串口" aria-label="选择或授权串口">选择</button></div>
+<div class="field-row"><div><label id="keyPinLabel" for="keyPin">手键输入</label><select id="keyPin"><option value="cts">CTS · 8 脚</option><option value="dsr">DSR · 6 脚</option><option value="cd">DCD · 1 脚</option></select></div><div><label for="keyPolarity">按下电平</label><select id="keyPolarity"><option value="high">高电平</option><option value="low">低电平</option></select></div></div>
+
+<label for="rts">公共端 · RTS 7 脚</label><select id="rts"><option value="high">输出高电平</option><option value="low">输出低电平</option></select>
+<button id="checkLevels" class="full">电平检查</button><p id="levelCheckStatus" class="help" role="status">连接串口检查实际电平；退出设置后自动断开，不计入练习。</p>
+<p id="samplingStatus" class="help">浏览器轮询测时，请保持页面在前台；实际精度取决于设备、驱动和浏览器。</p><div class="pin-monitor" aria-label="串口实际电平"><span id="pinCts">CTS <b>—</b></span><span id="pinDsr">DSR <b>—</b></span><span id="pinCd">DCD <b>—</b></span></div>
+
+<details class="wiring"><summary>接线与电平检查</summary><p>电键公共端接 DB9 的 <b>7 脚 RTS</b>，触点另一端接所选的 CTS（8）、DSR（6）或 DCD（1）。</p><p>脚号按 DB9 定义；7 脚不是地线，地线是 5 脚。需使用引出这些握手信号的串口适配器。先看上方电平指示，确认松开与按下能够稳定切换，再选择按下电平。</p><p>DTR 不启用。本程序只用于电键输入与本机侧音，不控制发射机。</p></details>
+</section>
+<section class="panel settings"><h2><span>05</span> 训练标准</h2>
+<label for="wpm">速度 <output id="wpmValue">15 WPM</output></label><input id="wpm" type="range" min="5" max="40" value="15"><div class="speed-values"><span>点 <b id="dotMs">80 ms</b></span><span>划 <b id="dashMs">240 ms</b></span><span>字距 <b id="letterMs">240 ms</b></span></div>
+<label for="tolerance">允许偏差</label><select id="tolerance"><option value="0.1">严格 ±10%</option><option value="0.2" selected>日常 ±20%</option><option value="0.3">入门 ±30%</option></select>
+<label class="check"><input id="sound" type="checkbox" checked> 开启本机侧音 <span>700 Hz</span></label>
+
+<label for="holdSeconds">发完后保留结果（秒）</label><input id="holdSeconds" type="number" min="0" max="30" step="0.5" value="1.5"><p class="help">0–30 秒；设为 0 时，识别完成且松键后立即出下一题。</p>
+
+</section></aside><div class="cookie-settings"><button id="clearCookies">清除 Cookie · 恢复默认设置</button><p id="cookieStatus" class="help" role="status">设置更改后自动保存到 Cookie，有效期一年。</p></div><p class="help">呼号文件：项目目录下 callsign.txt，每行一个呼号，保存后在呼号练习中点击“重新读取呼号文件”。</p></dialog><footer>COM 电键输入 · 本地测时 · 无麦克风 / 无上传 <span>标准：点 1、划 3、码内 1、字母 3、单词 7</span></footer>
+</main><script type="module" src="app.js"></script></body></html>

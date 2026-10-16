@@ -1,0 +1,17 @@
+# 每行：发送内容 | 中文含义
+# UTF-8 编码；以 # 开头的行是注释。
+CQ CQ CQ DE BD4MCG K | 普遍呼叫，这里是 BD4MCG，请回答
+UR RST 599 | 你的信号报告是 599
+MY NAME IS LI | 我的名字是 LI
+MY QTH IS NANJING | 我的位置是南京
+TNX FER CALL | 感谢呼叫
+PSE QRS | 请发慢一些
+PSE RPT UR NAME | 请重复你的名字
+HW CPY? | 抄收得怎样？
+PWR IS 100 W | 发射功率为 100 瓦
+RIG IS IC7300 | 电台设备型号是 IC7300
+ANT IS A DIPOLE | 天线是偶极天线
+WX IS FINE | 天气晴朗
+TNX FER NICE QSO | 感谢愉快通联
+HPE CU AGN | 希望再次相遇
+73 ES GL | 致以问候并祝好运
