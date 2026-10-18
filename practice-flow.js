@@ -30,6 +30,7 @@ export function parseCallsigns(text){
  return {callsigns:[...new Set(lines.filter(s=>!invalid.includes(s)))],invalid};
 }
 export function nextPrompt(mode,previous='',random=Math.random,categories=['letter','digit'],callsigns=[],banks={}){
+ if(mode==='telegram'){let value=Math.min(9999,Math.max(0,Math.floor(random()*10000)));if(String(value).padStart(4,'0')===previous)value=(value+1)%10000;return String(value).padStart(4,'0');}
  const bank=mode==='character'?promptPool(categories):mode==='word'?WORDS:mode==='callsign'?callsigns:Object.keys(banks[mode]??{});
  if(!bank.length)throw new Error(mode==='callsign'?'没有可用呼号，请在项目目录的 callsign.txt 中每行填写一个呼号，再重新读取。':`没有可用题目，请检查 ${BANK_FILES[mode]||'题库'}。`);
  const remaining=bank.filter(item=>item!==previous),choices=remaining.length?remaining:bank;

@@ -1,13 +1,13 @@
-import {BrowserSerial} from './web-serial.js?v=20261018-2';
-import {nextPrompt,questionComplete,retentionMs,reviewReady,BANK_FILES,parsePracticeBank,parseCallsigns} from './practice-flow.js';
-import {makeLesson,makeFreeLesson,compactMarks,Practice,checkTiming,CODES} from './morse.js?v=20261018-2';
+import {BrowserSerial} from './web-serial.js?v=20261018-3';
+import {nextPrompt,questionComplete,retentionMs,reviewReady,BANK_FILES,parsePracticeBank,parseCallsigns} from './practice-flow.js?v=20261018-3';
+import {makeLesson,makeFreeLesson,compactMarks,SHORT_DIGITS,Practice,checkTiming,CODES} from './morse.js?v=20261018-3';
 const $=id=>document.getElementById(id),ms=n=>`${Math.round(n)} ms`,signed=n=>`${n>=0?'+':'−'}${Math.abs(Math.round(n))}`;
 const SETTINGS_COOKIE='cw_trainer_settings';
 const settingsDefaults={simulation:false,keyPin:'cts',keyPolarity:'high',rts:'high',wpm:'15',tolerance:'0.2',sound:true,autoReference:false,holdSeconds:'1.5',practiceType:'character',poolLetter:true,poolDigit:true,poolSymbol:false,zoom:'22'};
 function validSettings(value){
  const result={...settingsDefaults};
  if(!value||typeof value!=='object')return result;
- for(const [id,choices] of Object.entries({keyPin:['cts','dsr','cd'],keyPolarity:['high','low'],rts:['high','low'],tolerance:['0.1','0.2','0.3'],practiceType:['character','word','callsign','qcode','cw','sentence','free']}))if(choices.includes(value[id]))result[id]=value[id];
+ for(const [id,choices] of Object.entries({keyPin:['cts','dsr','cd'],keyPolarity:['high','low'],rts:['high','low'],tolerance:['0.1','0.2','0.3'],practiceType:['character','word','callsign','qcode','cw','sentence','free','telegram']}))if(choices.includes(value[id]))result[id]=value[id];
 
 
  for(const [id,min,max] of [['wpm',5,40],['holdSeconds',0,30],['zoom',12,40]])if(value[id]!==''&&value[id]!=null&&Number.isFinite(Number(value[id]))&&Number(value[id])>=min&&Number(value[id])<=max)result[id]=String(value[id]);
@@ -69,12 +69,12 @@ function lock(){
  $('sourceBadge').textContent=simulation?(running?'模拟测试 · 空格拍发':'模拟测试 · 等待开始'):running?`${portLabel()} · 手键 / 空格`:connected?`${portLabel()} · 手键`:'等待开始练习';
 }
 function reset(){
- try{lesson=selectedMode==='free'?makeFreeLesson(Number($('wpm').value)):makeLesson(prompt,Number($('wpm').value));}catch(e){say(e.message);return false;}
+ try{lesson=selectedMode==='free'?makeFreeLesson(Number($('wpm').value)):makeLesson(prompt,Number($('wpm').value),selectedMode==='telegram'?SHORT_DIGITS:CODES);}catch(e){say(e.message);return false;}
  practice=new Practice(lesson,tolerance());clock=null;inputOwner=null;serialOffset=null;currentIndex=0;reviewAt=null;
  $('wpmValue').textContent=`${lesson.wpm} WPM`;$('screenSpeed').textContent=`${lesson.wpm} WPM`;
  $('dotMs').textContent=ms(lesson.unit);$('dashMs').textContent=ms(lesson.unit*3);$('letterMs').textContent=ms(lesson.unit*3);
  $('timelineScroll').scrollLeft=0;
- $('questionNumber').textContent=selectedMode==='free'?'自由练习':`第 ${questionNumber} 题`;
+ $('questionNumber').textContent=selectedMode==='free'?'自由拍发':`第 ${questionNumber} 题`;
  render();return true;
 }
 async function ensureAudio(force=false){
@@ -110,7 +110,7 @@ async function start(input='com'){
   if(!reset())return;
   source=input;running=true;
   say(input==='keyboard'?'键盘练习已开始，按住空格或下方按钮发报。':input==='com'&&!armed?'串口已连接，请松开电键，随后即可开始发送。':'连续练习已开始，请发送本题。');
- }catch(e){if(request===operation){connecting=false;console.error('CW 开始练习失败',e);say(`无法开始练习：${e.message}（版本 20261018-2）`);}}
+ }catch(e){if(request===operation){connecting=false;console.error('CW 开始练习失败',e);say(`无法开始练习：${e.message}（版本 20261018-3）`);}}
  finally{if(request===operation){busy=false;lock();autoListen();}}
 }
 async function finish(){
@@ -158,8 +158,8 @@ function render(){
  const expected=lesson.marks[currentIndex],last=marks.at(-1),currentLetter=expected?lesson.letters[expected.letter]:lesson.letters.at(-1);
  $('targetLetter').textContent=lesson.text;
  $('targetLetter').classList.toggle('word',lesson.letters.length>1);
- $('targetLabel').textContent=({character:'本题字符',word:'本题单词',callsign:'本题呼号',qcode:'本题 Q 简语',cw:'本题 CW 缩语',sentence:'本题通联句子',free:'无固定题目'})[selectedMode];
- const meaning=banks[selectedMode]?.[lesson.text];$('promptMeaning').textContent=meaning||'';$('promptMeaning').hidden=!meaning;
+ $('targetLabel').textContent=({character:'本题字符',word:'本题单词',callsign:'本题呼号',qcode:'本题 Q 简语',cw:'本题 CW 缩语',sentence:'本题通联句子',free:'无固定题目',telegram:'四位数字报文'})[selectedMode];
+ const meaning=banks[selectedMode]?.[lesson.text];$('promptMeaning').textContent=selectedMode==='telegram'?'随机四位数字训练组 · 使用数字短码（5 为一点、0 为一划）':meaning||'';$('promptMeaning').hidden=selectedMode!=='telegram'&&!meaning;
  $('targetCode').textContent=selectedMode==='free'?'点 1 · 划 3 · 码内 1 · 字母 3 · 单词 7':lesson.letters.map(l=>l.code.replaceAll('.','·').replaceAll('-','−')).join(' / ');
  const received=practice.received(now,true);const decoded=received.at(-1)||'—';
  $('receivedLetter').textContent=received.length?received.map(c=>(c===' '||CODES[c])?c:'…').join(''):'—';
