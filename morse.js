@@ -67,3 +67,9 @@ export class Practice {
   return {good,total:this.marks.length,expected:this.lesson.marks.length,missing:this.finished?Math.max(0,this.lesson.marks.length-this.marks.length):0,extra:Math.max(0,this.marks.length-this.lesson.marks.length),gapGood:letterGaps.filter(g=>g.ok).length,gapTotal:letterGaps.length};
  }
 }
+
+// Display positions only: preserve all measured durations and decoding timestamps.
+export function compactMarks(marks,unit){
+ let cursor=0,previousEnd=0;
+ return marks.map((m,i)=>{const duration=m.actual??m.duration??(m.end-m.start);if(i)cursor+=Math.min(2*unit,Math.max(0,m.start-previousEnd));const result={...m,displayStart:cursor,displayEnd:cursor+duration};cursor+=duration;previousEnd=m.end??m.start+duration;return result;});
+}

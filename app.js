@@ -1,6 +1,6 @@
-import {BrowserSerial} from './web-serial.js?v=20261018-1';
+import {BrowserSerial} from './web-serial.js?v=20261018-2';
 import {nextPrompt,questionComplete,retentionMs,reviewReady,BANK_FILES,parsePracticeBank,parseCallsigns} from './practice-flow.js';
-import {makeLesson,makeFreeLesson,Practice,checkTiming,CODES} from './morse.js?v=20261018-1';
+import {makeLesson,makeFreeLesson,compactMarks,Practice,checkTiming,CODES} from './morse.js?v=20261018-2';
 const $=id=>document.getElementById(id),ms=n=>`${Math.round(n)} ms`,signed=n=>`${n>=0?'+':'−'}${Math.abs(Math.round(n))}`;
 const SETTINGS_COOKIE='cw_trainer_settings';
 const settingsDefaults={simulation:false,keyPin:'cts',keyPolarity:'high',rts:'high',wpm:'15',tolerance:'0.2',sound:true,autoReference:false,holdSeconds:'1.5',practiceType:'character',poolLetter:true,poolDigit:true,poolSymbol:false,zoom:'22'};
@@ -85,11 +85,12 @@ async function ensureAudio(force=false){
 function tone(down){if(!gain)return;const t=audio.currentTime;gain.gain.cancelScheduledValues(t);gain.gain.setTargetAtTime(down && $('sound').checked ? .14 : 0,t,.002);}
 function edge(down,t){
  if(!running)return;
+ if(selectedMode==='free'&&down&&practice.downAt===null&&practice.marks.length>=200){const owner=inputOwner,offset=serialOffset;reset();inputOwner=owner;serialOffset=offset;}
  lastEdgeWall=performance.now();
  if(reviewAt!==null){tone(false);return;}
  clock={t,wall:performance.now()};
  if(practice.edge(down,t)){tone(down);if(!down)render();}
- if(practice.marks.length>=200){finish();say('本轮达到 200 个信号，请清空后继续。');}
+ if(selectedMode!=='free'&&practice.marks.length>=200){finish();say('本轮达到 200 个信号，请清空后继续。');}
 }
 async function start(input='com'){
  if(running||playing||busy||connecting||$('settingsDialog').open||closingSettings)return;
@@ -109,7 +110,7 @@ async function start(input='com'){
   if(!reset())return;
   source=input;running=true;
   say(input==='keyboard'?'键盘练习已开始，按住空格或下方按钮发报。':input==='com'&&!armed?'串口已连接，请松开电键，随后即可开始发送。':'连续练习已开始，请发送本题。');
- }catch(e){if(request===operation){connecting=false;console.error('CW 开始练习失败',e);say(`无法开始练习：${e.message}（版本 20261018-1）`);}}
+ }catch(e){if(request===operation){connecting=false;console.error('CW 开始练习失败',e);say(`无法开始练习：${e.message}（版本 20261018-2）`);}}
  finally{if(request===operation){busy=false;lock();autoListen();}}
 }
 async function finish(){
@@ -133,21 +134,23 @@ function keyInput(key,value){
 function rect(x,y,w,h,fill,extra=''){return `<rect x="${x.toFixed(2)}" y="${y}" width="${Math.max(.8,w).toFixed(2)}" height="${h}" rx="2" fill="${fill}" ${extra}/>`;}
 function timeline(now){
  const scale=Number($('zoom').value)/lesson.unit,pad=12;
- const live=practice.downAt!==null?{start:practice.downAt-practice.origin,end:now-practice.origin}:null;
- const last=live?.end??practice.marks.at(-1)?.end??0;
- const extent=Math.max(lesson.duration,last)+lesson.unit*2,width=Math.max(450,extent*scale+pad*2);
- const svg=$('timeline');svg.setAttribute('width',width);svg.setAttribute('viewBox',`0 0 ${width} 164`);
+ const raw=[...practice.marks];
+ if(practice.downAt!==null)raw.push({start:practice.downAt-practice.origin,end:now-practice.origin,actual:Math.max(0,now-practice.downAt),live:true});
+ const actual=compactMarks(raw,lesson.unit),standard=compactMarks(lesson.marks,lesson.unit);
+ if(lesson.free)standard.forEach((m,i)=>{m.displayStart=actual[i].displayStart;m.displayEnd=m.displayStart+m.duration;});
+ const last=actual.at(-1)?.displayEnd??0,extent=Math.max(standard.at(-1)?.displayEnd??0,last)+lesson.unit*2;
+ const width=Math.max(450,extent*scale+pad*2),svg=$('timeline');svg.setAttribute('width',width);svg.setAttribute('viewBox',`0 0 ${width} 164`);
  let html='';const tick=lesson.unit*(extent/lesson.unit>180?10:5);
- for(let t=0;t<=extent;t+=tick){const x=pad+t*scale;html+=`<path d="M ${x} 26 V 131" stroke="#72a8b8" stroke-opacity=".45" stroke-dasharray="2 4"/><text x="${x}" y="150" fill="#497b8b" font-size="9">${Math.round(t)} ms</text>`;}
- lesson.letters.forEach(l=>{const x=pad+l.start*scale;html+=`<text x="${x}" y="17" fill="#315d67" font-size="12" font-weight="600">${l.char.replaceAll('&','&amp;')}</text>`;});
- lesson.marks.forEach((m,i)=>{const x=pad+m.start*scale;html+=rect(x,35,m.duration*scale,23,'#3d8868',`opacity="${i===currentIndex?1:.7}"`);if(i<lesson.marks.length-1&&m.gapKind!=='码内'){html+=`<path d="M ${x+m.duration*scale+2} 64 h ${m.gap*scale-4}" stroke="#538795" stroke-dasharray="3 2"/><text x="${x+m.duration*scale+4}" y="77" font-size="9" fill="#527d88">${m.gapKind} ${Math.round(m.gap)}</text>`;}});
- practice.gaps.filter(g=>g.kind!=='码内').forEach(g=>{const x=pad+g.start*scale;html+=`<path d="M ${x+2} 118 h ${Math.max(0,(g.end-g.start)*scale-4)}" stroke="${g.ok?'#607b89':'#b94f42'}" stroke-dasharray="3 2"/><text x="${x+3}" y="131" font-size="9" fill="${g.ok?'#527180':'#a03c34'}">${Math.round(g.actual)} ms</text>`;});
- practice.marks.forEach(m=>{html+=rect(pad+m.start*scale,88,m.actual*scale,23,m.ok&&m.correct?'#b455aa':'#b94f42');});
- if(live)html+=rect(pad+live.start*scale,88,Math.max(0,live.end-live.start)*scale,23,'#9953a7');
+ for(let t=0;t<=extent;t+=tick){const x=pad+t*scale;html+=`<path d="M ${x} 26 V 131" stroke="#72a8b8" stroke-opacity=".45" stroke-dasharray="2 4"/>`;}
+ lesson.letters.forEach(l=>{const x=pad+(standard[l.first]?.displayStart??0)*scale;html+=`<text x="${x}" y="17" fill="#315d67" font-size="12" font-weight="600">${l.char.replaceAll('&','&amp;')}</text>`;});
+ standard.forEach((m,i)=>{const x=pad+m.displayStart*scale;html+=rect(x,35,m.duration*scale,23,'#3d8868',`opacity="${i===currentIndex?1:.7}"`);if(i<standard.length-1&&m.gapKind!=='码内'){const gap=Math.max(0,standard[i+1].displayStart-m.displayEnd);html+=`<path d="M ${x+m.duration*scale+2} 64 h ${Math.max(0,gap*scale-4)}" stroke="#538795" stroke-dasharray="3 2"/><text x="${x+m.duration*scale+4}" y="77" font-size="9" fill="#527d88">${m.gapKind} ${Math.round(m.gap)}</text>`;}});
+ practice.gaps.filter(g=>g.kind!=='码内').forEach(g=>{const previous=actual[g.index],next=actual[g.index+1];if(!previous||!next)return;const x=pad+previous.displayEnd*scale;html+=`<path d="M ${x+2} 118 h ${Math.max(0,(next.displayStart-previous.displayEnd)*scale-4)}" stroke="${g.ok?'#607b89':'#b94f42'}" stroke-dasharray="3 2"/><text x="${x+3}" y="131" font-size="9" fill="${g.ok?'#527180':'#a03c34'}">${Math.round(g.actual)} ms</text>`;});
+ actual.forEach(m=>{html+=rect(pad+m.displayStart*scale,88,m.actual*scale,23,m.live?'#9953a7':m.ok&&m.correct?'#b455aa':'#b94f42');});
  if(last>0)html+=`<path d="M ${pad+last*scale} 28 V 114" stroke="#1f667b" stroke-width="1"/>`;
  svg.innerHTML=html;
  if(running){const box=$('timelineScroll'),cursor=pad+last*scale;if(cursor>box.scrollLeft+box.clientWidth-45)box.scrollLeft=Math.max(0,cursor-box.clientWidth+90);}
 }
+
 function render(){
  const now=captureTime(),marks=practice.marks,s=practice.summary();
  const live=practice.downAt!==null;
@@ -234,10 +237,14 @@ function inputsReleased(){return !(rawDown||rawDash||outputDown||held.key||input
 function changeQuestion(){
  if(!inputsReleased()||practice.downAt!==null){say('请先松开电键，等当前点划结束后换题。');return false;}
  try{prompt=$('practiceType').value==='free'?'':nextPrompt($('practiceType').value,prompt,Math.random,pools(),callsigns,banks);}catch(e){if(running)finish();say(e.message);return false;}selectedMode=$('practiceType').value;questionNumber++;reset();
- say(selectedMode==='free'?'自由拍发：无固定题目，不自动清空；按长度归类点划并检查节奏。最多记录 200 个点划，可随时松键后清空。':running?'新题已就绪，请继续发送。':'已随机出题，点击开始练习。');lock();autoListen();return true;
+ say(selectedMode==='free'?'自由拍发：停顿一个单词间距后按保留时长自动清空；连续拍发满 200 个点划后自动开始新段，练习不中断。':running?'新题已就绪，请继续发送。':'已随机出题，点击开始练习。');lock();autoListen();return true;
 }
 function checkAdvance(){
- if(selectedMode==='free'||!running||playing||busy)return;
+ if(!running||playing||busy)return;
+ if(selectedMode==='free'){
+  if(practice.lastEnd!==null&&practice.downAt===null&&inputsReleased()&&captureTime()-practice.lastEnd>=lesson.unit*7+retentionMs($('holdSeconds').value)){reset();say('记录已自动清空，请继续拍发。');}
+  return;
+ }
  if(reviewAt===null&&questionComplete(practice,captureTime())&&inputsReleased()){
   practice.finish();reviewAt=performance.now();tone(false);render();
   const s=practice.summary();
