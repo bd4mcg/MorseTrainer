@@ -34,3 +34,7 @@ qcodes.txt、cw_terms.txt、sentences.txt：每行“发送内容 | 中文含义
 
 旧版完整源码备份：backups/nodejs-working-20261016.zip。
 官方 API 说明：https://developer.chrome.com/docs/capabilities/serial
+
+## 自由练习
+
+练习模式选择“自由”，不出固定题目、不自动换题。支持串口手键和模拟空格输入，实时显示识别结果，按设定速度检查点划及间距。点划按实测长度归类（2 个点时长为分界），不能判断原本想发的字符。标准条按每次实发起点对齐；松键后点击“清空记录”可继续，单轮上限 200 个点划。自由模式不播放本题标准码。

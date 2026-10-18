@@ -18,6 +18,9 @@ export function makeLesson(text,wpm=15){
  });
  return {text:normalized,unit,wpm,marks,letters,duration:marks.at(-1).start+marks.at(-1).duration};
 }
+export function makeFreeLesson(wpm=15){
+ const base=makeLesson('E',wpm);return {...base,text:'自由拍发',free:true,marks:[],letters:[],duration:0};
+}
 export function checkTiming(actual,target,tolerance=.2){
  if(target===null||target===undefined)return {actual,target:null,delta:null,error:null,ok:false,label:'无对应标准'};
  const delta=actual-target,error=delta/target,ok=Math.abs(delta)<=target*tolerance+1e-7;
@@ -32,12 +35,13 @@ export class Practice {
    if(this.downAt!==null)return false;
    this.origin??=time;
    const i=this.marks.length;
-   if(this.lastEnd!==null){const e=this.lesson.marks[i-1];this.gaps.push({index:i-1,start:this.lastEnd-this.origin,end:time-this.origin,kind:e?.gapKind??'额外',...checkTiming(time-this.lastEnd,e?.gap,this.tolerance)});}
+   if(this.lastEnd!==null){const e=this.lesson.marks[i-1];if(this.lesson.free){const units=time-this.lastEnd<2*this.lesson.unit?1:time-this.lastEnd<5*this.lesson.unit?3:7;e.gap=units*this.lesson.unit;e.gapKind=units===1?'码内':units===3?'字母':'单词';}this.gaps.push({index:i-1,start:this.lastEnd-this.origin,end:time-this.origin,kind:e?.gapKind??'额外',...checkTiming(time-this.lastEnd,e?.gap,this.tolerance)});}
    this.downAt=time;return true;
   }
   if(this.downAt===null)return false;
-  const i=this.marks.length,e=this.lesson.marks[i],duration=time-this.downAt;
+  const i=this.marks.length,duration=time-this.downAt;let e=this.lesson.marks[i];
   const symbol=duration<2*this.lesson.unit?'.':'-';
+  if(this.lesson.free){e={symbol,char:'自由',letter:0,start:this.downAt-this.origin,duration:(symbol==='.'?1:3)*this.lesson.unit,gap:this.lesson.unit,gapKind:'码内'};this.lesson.marks.push(e);this.lesson.duration=e.start+e.duration;}
   this.marks.push({index:i,start:this.downAt-this.origin,end:time-this.origin,symbol,expected:e,correct:!!e&&symbol===e.symbol,...checkTiming(duration,e?.duration,this.tolerance)});
   this.lastEnd=time;this.downAt=null;return true;
  }

@@ -1,13 +1,13 @@
-import {BrowserSerial} from './web-serial.js?v=20261016-3';
+import {BrowserSerial} from './web-serial.js?v=20261018-1';
 import {nextPrompt,questionComplete,retentionMs,reviewReady,BANK_FILES,parsePracticeBank,parseCallsigns} from './practice-flow.js';
-import {makeLesson,Practice,checkTiming,CODES} from './morse.js';
+import {makeLesson,makeFreeLesson,Practice,checkTiming,CODES} from './morse.js?v=20261018-1';
 const $=id=>document.getElementById(id),ms=n=>`${Math.round(n)} ms`,signed=n=>`${n>=0?'+':'−'}${Math.abs(Math.round(n))}`;
 const SETTINGS_COOKIE='cw_trainer_settings';
 const settingsDefaults={simulation:false,keyPin:'cts',keyPolarity:'high',rts:'high',wpm:'15',tolerance:'0.2',sound:true,autoReference:false,holdSeconds:'1.5',practiceType:'character',poolLetter:true,poolDigit:true,poolSymbol:false,zoom:'22'};
 function validSettings(value){
  const result={...settingsDefaults};
  if(!value||typeof value!=='object')return result;
- for(const [id,choices] of Object.entries({keyPin:['cts','dsr','cd'],keyPolarity:['high','low'],rts:['high','low'],tolerance:['0.1','0.2','0.3'],practiceType:['character','word','callsign','qcode','cw','sentence']}))if(choices.includes(value[id]))result[id]=value[id];
+ for(const [id,choices] of Object.entries({keyPin:['cts','dsr','cd'],keyPolarity:['high','low'],rts:['high','low'],tolerance:['0.1','0.2','0.3'],practiceType:['character','word','callsign','qcode','cw','sentence','free']}))if(choices.includes(value[id]))result[id]=value[id];
 
 
  for(const [id,min,max] of [['wpm',5,40],['holdSeconds',0,30],['zoom',12,40]])if(value[id]!==''&&value[id]!=null&&Number.isFinite(Number(value[id]))&&Number(value[id])>=min&&Number(value[id])<=max)result[id]=String(value[id]);
@@ -58,7 +58,9 @@ function lock(){
  $('start').disabled=running||playing||busy||connecting;
  $('clearCookies').disabled=frozen||connected||connecting||stopping;
  $('finish').disabled=stopping||(!running&&!connecting&&!busy);
- $('listen').disabled=busy||connecting||stopping;
+ $('listen').disabled=selectedMode==='free'||busy||connecting||stopping;
+ $('guidedHint').hidden=selectedMode==='free';$('freeHint').hidden=selectedMode!=='free';
+ $('clear').textContent=selectedMode==='free'?'↻ 清空记录':'↻ 换一题';
  $('listen').textContent=playing?'■ 停止标准码':'♫ 听本题标准码';
  $('keyboardPad').hidden=!running;
  $('connectionLight').classList.toggle('on',connected);
@@ -67,12 +69,12 @@ function lock(){
  $('sourceBadge').textContent=simulation?(running?'模拟测试 · 空格拍发':'模拟测试 · 等待开始'):running?`${portLabel()} · 手键 / 空格`:connected?`${portLabel()} · 手键`:'等待开始练习';
 }
 function reset(){
- try{lesson=makeLesson(prompt,Number($('wpm').value));}catch(e){say(e.message);return false;}
+ try{lesson=selectedMode==='free'?makeFreeLesson(Number($('wpm').value)):makeLesson(prompt,Number($('wpm').value));}catch(e){say(e.message);return false;}
  practice=new Practice(lesson,tolerance());clock=null;inputOwner=null;serialOffset=null;currentIndex=0;reviewAt=null;
  $('wpmValue').textContent=`${lesson.wpm} WPM`;$('screenSpeed').textContent=`${lesson.wpm} WPM`;
  $('dotMs').textContent=ms(lesson.unit);$('dashMs').textContent=ms(lesson.unit*3);$('letterMs').textContent=ms(lesson.unit*3);
  $('timelineScroll').scrollLeft=0;
- $('questionNumber').textContent=`第 ${questionNumber} 题`;
+ $('questionNumber').textContent=selectedMode==='free'?'自由练习':`第 ${questionNumber} 题`;
  render();return true;
 }
 async function ensureAudio(force=false){
@@ -107,7 +109,7 @@ async function start(input='com'){
   if(!reset())return;
   source=input;running=true;
   say(input==='keyboard'?'键盘练习已开始，按住空格或下方按钮发报。':input==='com'&&!armed?'串口已连接，请松开电键，随后即可开始发送。':'连续练习已开始，请发送本题。');
- }catch(e){if(request===operation){connecting=false;console.error('CW 开始练习失败',e);say(`无法开始练习：${e.message}（版本 20261016-3）`);}}
+ }catch(e){if(request===operation){connecting=false;console.error('CW 开始练习失败',e);say(`无法开始练习：${e.message}（版本 20261018-1）`);}}
  finally{if(request===operation){busy=false;lock();autoListen();}}
 }
 async function finish(){
@@ -153,34 +155,34 @@ function render(){
  const expected=lesson.marks[currentIndex],last=marks.at(-1),currentLetter=expected?lesson.letters[expected.letter]:lesson.letters.at(-1);
  $('targetLetter').textContent=lesson.text;
  $('targetLetter').classList.toggle('word',lesson.letters.length>1);
- $('targetLabel').textContent=({character:'本题字符',word:'本题单词',callsign:'本题呼号',qcode:'本题 Q 简语',cw:'本题 CW 缩语',sentence:'本题通联句子'})[selectedMode];
+ $('targetLabel').textContent=({character:'本题字符',word:'本题单词',callsign:'本题呼号',qcode:'本题 Q 简语',cw:'本题 CW 缩语',sentence:'本题通联句子',free:'无固定题目'})[selectedMode];
  const meaning=banks[selectedMode]?.[lesson.text];$('promptMeaning').textContent=meaning||'';$('promptMeaning').hidden=!meaning;
- $('targetCode').textContent=lesson.letters.map(l=>l.code.replaceAll('.','·').replaceAll('-','−')).join(' / ');
+ $('targetCode').textContent=selectedMode==='free'?'点 1 · 划 3 · 码内 1 · 字母 3 · 单词 7':lesson.letters.map(l=>l.code.replaceAll('.','·').replaceAll('-','−')).join(' / ');
  const received=practice.received(now,true);const decoded=received.at(-1)||'—';
  $('receivedLetter').textContent=received.length?received.map(c=>(c===' '||CODES[c])?c:'…').join(''):'—';
  $('receivedLetter').classList.toggle('word',lesson.letters.length>1||received.length>1);
  $('receivedCode').textContent=decoded==='—'?'等待发报':received.slice(-12).map(c=>c===' '?' / ':c).join(' ');
- $('screenPosition').textContent=`第 ${currentLetter.index+1} / ${lesson.letters.length} 个字母`;
+ $('screenPosition').textContent=selectedMode==='free'?`已发 ${marks.length} 个点划 · 标准条按实发起点对齐`:`第 ${currentLetter.index+1} / ${lesson.letters.length} 个字母`;
  const duration=live?Math.max(0,now-practice.downAt):last?.actual;
- const e=live?lesson.marks[marks.length]:last?.expected??lesson.marks[0];
- $('currentLabel').textContent=`${live?'发送中':last?'刚完成':'下一个'} · ${e?(e.symbol==='.'?'点':'划'):'额外信号'}`;
+ const e=selectedMode==='free'&&live?{symbol:duration<2*lesson.unit?'.':'-',duration:(duration<2*lesson.unit?1:3)*lesson.unit}:live?lesson.marks[marks.length]:last?.expected??lesson.marks[0];
+ $('currentLabel').textContent=`${live?'发送中':last?'刚完成':'下一个'} · ${e?(e.symbol==='.'?'点':'划'):selectedMode==='free'?'等待拍发':'额外信号'}`;
  $('currentDuration').innerHTML=`${duration===undefined?'—':Math.round(duration)} <em>ms</em>`;
- $('currentTarget').textContent=e?`标准 ${ms(e.duration)}`:'无对应标准';
+ $('currentTarget').textContent=e?`标准 ${ms(e.duration)}`:selectedMode==='free'?`点 ${ms(lesson.unit)} / 划 ${ms(lesson.unit*3)}`:'无对应标准';
  const check=duration===undefined?null:checkTiming(duration,e?.duration,tolerance());
  $('currentError').textContent=check?.error==null?'—':`${signed(check.error*100)}%`;
  $('currentError').className=check&&!live?(check.ok?'good':'bad'):'';
  $('currentVerdict').textContent=!check?'松键后判定':check.target===null?'额外信号':live?(check.error>tolerance()?'已超长，等待松键':'实时计时，松键后判定'):`${check.label} · ${signed(check.delta)} ms${last&&!last.correct?' · 点划类型不符':''}`;
  const gap=practice.gaps.at(-1),prev=lesson.marks[marks.length-1];
- const gapLive=running&&!live&&practice.lastEnd!==null&&marks.length<lesson.marks.length;
+ const gapLive=selectedMode!=='free'&&running&&!live&&practice.lastEnd!==null&&marks.length<lesson.marks.length;
  $('gapLabel').textContent=gapLive?`${prev?.gapKind??'前'}间距 · 等待下一次按下`:gap?`${gap.kind}间距 · 已测`:'字母间距';
  $('gapDuration').innerHTML=`${gapLive?Math.round(now-practice.lastEnd):gap?Math.round(gap.actual):'—'} <em>ms</em>`;
  $('gapDuration').className=gapLive?'':gap?(gap.ok?'good':'bad'):'';
  $('gapVerdict').textContent=gapLive?`标准 ${ms(prev?.gap??lesson.unit*3)} · 进行中，不评分`:gap?`${gap.label} · 标准 ${gap.target===null?'—':ms(gap.target)}${gap.delta===null?'':` / ${signed(gap.delta)} ms`}`:`标准 ${ms(lesson.unit*3)} · 下一次按下后判定`;
- $('markScore').textContent=marks.length?`${Math.round(s.good/s.total*100)}%`:'—';$('markCount').textContent=`${s.total} / ${s.expected} 个点划 · ${s.good} 个合格`;
+ $('markScore').textContent=marks.length?`${Math.round(s.good/s.total*100)}%`:'—';$('markCount').textContent=selectedMode==='free'?`${s.total} 个点划 · ${s.good} 个长度合格`:`${s.total} / ${s.expected} 个点划 · ${s.good} 个合格`;
  $('gapScore').textContent=s.gapTotal?`${Math.round(s.gapGood/s.gapTotal*100)}%`:'—';$('gapCount').textContent=s.gapTotal?`${s.gapGood} / ${s.gapTotal} 段间距合格`:'尚未测到字母间距';
  const dots=marks.filter(m=>m.expected?.symbol==='.'),dashes=marks.filter(m=>m.expected?.symbol==='-'),mean=a=>a.reduce((n,m)=>n+m.actual,0)/a.length;
  $('ratio').textContent=dots.length&&dashes.length?`1 : ${(mean(dashes)/mean(dots)).toFixed(2)}`:'— : —';
- $('completion').textContent=practice.finished?`本轮结束 · 未发 ${s.missing} · 多发 ${s.extra}`:running?'正在记录电键通断':'按目标顺序对照';
+ $('completion').textContent=selectedMode==='free'?'按实测长度归类，不能判断原本想发的字符':practice.finished?`本轮结束 · 未发 ${s.missing} · 多发 ${s.extra}`:running?'正在记录电键通断':'按目标顺序对照';
  $('details').innerHTML=marks.length?marks.map((m,i)=>{const g=i?practice.gaps[i-1]:null;return `<tr><td>${i+1} / ${m.expected?.char??'额外'} ${m.expected?(m.expected.symbol==='.'?'·':'−'):''}</td><td>${ms(m.actual)} / ${m.target===null?'—':ms(m.target)}</td><td class="${m.ok?'good':'bad'}">${m.delta===null?'—':`${signed(m.delta)} ms / ${signed(m.error*100)}%`}</td><td class="${g&&!g.ok?'bad':''}">${g?`${ms(g.actual)} / ${g.target===null?'—':ms(g.target)}`:'—'}${g?`<small>${g.kind}间距 · ${g.label}</small>`:''}</td><td class="${m.ok&&m.correct?'good':'bad'}">${m.target===null?'额外信号':`${m.label}${!m.correct?' · 类型不符':''}`}</td></tr>`;}).reverse().join(''):'<tr><td colspan="5" class="empty">每次松键后，显示点划长度；下一次按下后，显示间隔长度。</td></tr>';
  timeline(now);
 }
@@ -215,8 +217,9 @@ function stopReference(){
  if(referenceGain){referenceGain.gain.cancelScheduledValues(audio.currentTime);referenceGain.gain.setValueAtTime(0,audio.currentTime);}
  const wasAutomatic=automaticReference;automaticReference=false;playing=false;if(wasAutomatic&&running)say(inputsReleased()?'标准码播放结束，请开始拍发。':'标准码播放结束，请先松开电键或空格，再开始拍发。');const resolve=playResolve;playResolve=null;resolve?.();lock();
 }
-function autoListen(){if(running&&$('autoReference').checked&&!playing&&!busy)void listen(true);}
+function autoListen(){if(selectedMode!=='free'&&running&&$('autoReference').checked&&!playing&&!busy)void listen(true);}
 async function listen(automatic=false){
+ if(selectedMode==='free')return;
  if(playing){stopReference();return;}
  const version=++playVersion;playing=true;automaticReference=automatic===true;lock();
  try{
@@ -230,11 +233,11 @@ async function listen(automatic=false){
 function inputsReleased(){return !(rawDown||rawDash||outputDown||held.key||inputOwner);}
 function changeQuestion(){
  if(!inputsReleased()||practice.downAt!==null){say('请先松开电键，等当前点划结束后换题。');return false;}
- try{prompt=nextPrompt($('practiceType').value,prompt,Math.random,pools(),callsigns,banks);}catch(e){if(running)finish();say(e.message);return false;}selectedMode=$('practiceType').value;questionNumber++;reset();
- say(running?'新题已就绪，请继续发送。':'已随机出题，点击开始练习。');lock();autoListen();return true;
+ try{prompt=$('practiceType').value==='free'?'':nextPrompt($('practiceType').value,prompt,Math.random,pools(),callsigns,banks);}catch(e){if(running)finish();say(e.message);return false;}selectedMode=$('practiceType').value;questionNumber++;reset();
+ say(selectedMode==='free'?'自由拍发：无固定题目，不自动清空；按长度归类点划并检查节奏。最多记录 200 个点划，可随时松键后清空。':running?'新题已就绪，请继续发送。':'已随机出题，点击开始练习。');lock();autoListen();return true;
 }
 function checkAdvance(){
- if(!running||playing||busy)return;
+ if(selectedMode==='free'||!running||playing||busy)return;
  if(reviewAt===null&&questionComplete(practice,captureTime())&&inputsReleased()){
   practice.finish();reviewAt=performance.now();tone(false);render();
   const s=practice.summary();
