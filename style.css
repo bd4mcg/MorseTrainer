@@ -11,3 +11,6 @@ main{padding:16px 26px}header{padding-bottom:12px;margin-bottom:16px}.brand{font
 .cookie-settings{margin-top:18px;padding-top:16px;border-top:1px solid var(--border)}.cookie-settings .help{min-height:0}
 
 .screen-letters .prompt-meaning{margin:7px auto 9px;padding:5px 10px;max-width:95%;border-radius:5px;background:#ffffff30;color:#214f5c;font-size:14px;line-height:1.6;letter-spacing:0;overflow-wrap:anywhere}.screen-letters .prompt-meaning::before{content:"含义：";color:#477c8c;font-size:12px}
+
+.screen-letters .prompt-meaning.telegram-meaning{font-size:22px;font-weight:600}
+.screen-letters .prompt-meaning.telegram-meaning::before{content:none}

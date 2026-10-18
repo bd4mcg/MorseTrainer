@@ -1,6 +1,6 @@
-import {BrowserSerial} from './web-serial.js?v=20261018-3';
-import {nextPrompt,questionComplete,retentionMs,reviewReady,BANK_FILES,parsePracticeBank,parseCallsigns} from './practice-flow.js?v=20261018-3';
-import {makeLesson,makeFreeLesson,compactMarks,SHORT_DIGITS,Practice,checkTiming,CODES} from './morse.js?v=20261018-3';
+import {BrowserSerial} from './web-serial.js?v=20261018-4';
+import {nextPrompt,questionComplete,retentionMs,reviewReady,BANK_FILES,parsePracticeBank,parseCallsigns} from './practice-flow.js?v=20261018-4';
+import {makeLesson,makeFreeLesson,compactMarks,SHORT_DIGITS,Practice,checkTiming,CODES} from './morse.js?v=20261018-4';
 const $=id=>document.getElementById(id),ms=n=>`${Math.round(n)} ms`,signed=n=>`${n>=0?'+':'−'}${Math.abs(Math.round(n))}`;
 const SETTINGS_COOKIE='cw_trainer_settings';
 const settingsDefaults={simulation:false,keyPin:'cts',keyPolarity:'high',rts:'high',wpm:'15',tolerance:'0.2',sound:true,autoReference:false,holdSeconds:'1.5',practiceType:'character',poolLetter:true,poolDigit:true,poolSymbol:false,zoom:'22'};
@@ -110,7 +110,7 @@ async function start(input='com'){
   if(!reset())return;
   source=input;running=true;
   say(input==='keyboard'?'键盘练习已开始，按住空格或下方按钮发报。':input==='com'&&!armed?'串口已连接，请松开电键，随后即可开始发送。':'连续练习已开始，请发送本题。');
- }catch(e){if(request===operation){connecting=false;console.error('CW 开始练习失败',e);say(`无法开始练习：${e.message}（版本 20261018-3）`);}}
+ }catch(e){if(request===operation){connecting=false;console.error('CW 开始练习失败',e);say(`无法开始练习：${e.message}（版本 20261018-4）`);}}
  finally{if(request===operation){busy=false;lock();autoListen();}}
 }
 async function finish(){
@@ -158,8 +158,8 @@ function render(){
  const expected=lesson.marks[currentIndex],last=marks.at(-1),currentLetter=expected?lesson.letters[expected.letter]:lesson.letters.at(-1);
  $('targetLetter').textContent=lesson.text;
  $('targetLetter').classList.toggle('word',lesson.letters.length>1);
- $('targetLabel').textContent=({character:'本题字符',word:'本题单词',callsign:'本题呼号',qcode:'本题 Q 简语',cw:'本题 CW 缩语',sentence:'本题通联句子',free:'无固定题目',telegram:'四位数字报文'})[selectedMode];
- const meaning=banks[selectedMode]?.[lesson.text];$('promptMeaning').textContent=selectedMode==='telegram'?'随机四位数字训练组 · 使用数字短码（5 为一点、0 为一划）':meaning||'';$('promptMeaning').hidden=selectedMode!=='telegram'&&!meaning;
+ $('targetLabel').textContent=({character:'本题字符',word:'本题单词',callsign:'本题呼号',qcode:'本题 Q 简语',cw:'本题 CW 缩语',sentence:'本题通联句子',free:'无固定题目',telegram:'汉字电报码'})[selectedMode];
+ $('promptMeaning').classList.toggle('telegram-meaning',selectedMode==='telegram');const meaning=banks[selectedMode]?.[lesson.text];$('promptMeaning').textContent=selectedMode==='telegram'?`对应汉字：${meaning||'—'}`:meaning||'';$('promptMeaning').hidden=selectedMode!=='telegram'&&!meaning;
  $('targetCode').textContent=selectedMode==='free'?'点 1 · 划 3 · 码内 1 · 字母 3 · 单词 7':lesson.letters.map(l=>l.code.replaceAll('.','·').replaceAll('-','−')).join(' / ');
  const received=practice.received(now,true);const decoded=received.at(-1)||'—';
  $('receivedLetter').textContent=received.length?received.map(c=>(c===' '||CODES[c])?c:'…').join(''):'—';
@@ -273,7 +273,7 @@ async function loadPracticeBank(mode){
  const file=BANK_FILES[mode];
  const response=await fetch('./'+file,{cache:'no-store'});
  if(!response.ok)throw new Error(`无法读取 ${file}，请确认文件位于程序目录中。`);
- try{banks[mode]=parsePracticeBank(await response.text());}catch(e){throw new Error(`${file}：${e.message}`);}
+ try{banks[mode]=parsePracticeBank(await response.text());if(mode==='telegram'&&Object.keys(banks[mode]).some(code=>!/^\d{4}$/.test(code)))throw new Error('电报码必须是四位数字。');}catch(e){throw new Error(`${file}：${e.message}`);}
 }
 $('practiceType').onchange=async()=>{
  if(!inputsReleased()||practice.downAt!==null){$('practiceType').value=selectedMode;say('请先松开电键再切换模式。');return;}
