@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>CW 电键训练室 · COM 口点划教学</title><link rel="stylesheet" href="style.css?v=20261018-4"></head>
+<html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>CW 电键训练室 · COM 口点划教学</title><link rel="stylesheet" href="style.css?v=20261021-1"></head>
 <body><main>
 <header><a href="./" class="brand"><span class="brand-icon">− · − ·</span><span>CW <b>TRAINER</b><small>电键训练室</small></span></a><div class="header-status"><i id="connectionLight"></i><span id="connectionLabel">未选择串口 · 串口未连接</span><button id="openSettings" class="square" aria-label="设置" title="设置">⚙</button></div></header>
 <div class="layout"><div class="workspace">
@@ -34,10 +34,12 @@
 <section class="panel settings"><h2><span>05</span> 训练标准</h2>
 <label for="wpm">速度 <output id="wpmValue">15 WPM</output></label><input id="wpm" type="range" min="5" max="40" value="15"><div class="speed-values"><span>点 <b id="dotMs">80 ms</b></span><span>划 <b id="dashMs">240 ms</b></span><span>字距 <b id="letterMs">240 ms</b></span></div>
 <label for="tolerance">允许偏差</label><select id="tolerance"><option value="0.1">严格 ±10%</option><option value="0.2" selected>日常 ±20%</option><option value="0.3">入门 ±30%</option></select>
-<label class="check"><input id="sound" type="checkbox" checked> 开启本机侧音 <span>700 Hz</span></label>
+<label class="check"><input id="sound" type="checkbox" checked> 开启本机侧音</label>
 
+<label for="sideToneHz">侧音音调 <output id="sideToneHzValue">700 Hz</output></label><input id="sideToneHz" type="range" min="300" max="1000" step="10" value="700">
+<label for="sideToneVolume">侧音音量 <output id="sideToneVolumeValue">50%</output></label><input id="sideToneVolume" type="range" min="0" max="100" step="1" value="50"><p class="help">调节本机拍发侧音；音量为 0 时静音，标准码播放不受影响。</p>
 <label class="check"><input id="autoReference" type="checkbox"> 拍发前播放标准码</label><p class="help">勾选后，开始练习及每道新题先播放标准码，播放结束后再拍发。</p>
 <label for="holdSeconds">发完后保留结果（秒）</label><input id="holdSeconds" type="number" min="0" max="30" step="0.5" value="1.5"><p class="help">0–30 秒；设为 0 时，识别完成且松键后立即出下一题。</p>
 
 </section></aside><div class="cookie-settings"><button id="clearCookies">清除 Cookie · 恢复默认设置</button><p id="cookieStatus" class="help" role="status">设置更改后自动保存到 Cookie，有效期一年。</p></div><p class="help">呼号文件：项目目录下 callsign.txt，每行一个呼号，保存后在呼号练习中点击“重新读取呼号文件”。</p></dialog><footer>COM 电键输入 · 本地测时 · 无麦克风 / 无上传 <span>标准：点 1、划 3、码内 1、字母 3、单词 7</span></footer>
-</main><script type="module" src="app.js?v=20261018-4"></script></body></html>
+</main><script type="module" src="app.js?v=20261021-1"></script></body></html>

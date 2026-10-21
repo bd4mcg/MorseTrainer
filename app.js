@@ -1,16 +1,16 @@
-import {BrowserSerial} from './web-serial.js?v=20261018-4';
-import {nextPrompt,questionComplete,retentionMs,reviewReady,BANK_FILES,parsePracticeBank,parseCallsigns} from './practice-flow.js?v=20261018-4';
-import {makeLesson,makeFreeLesson,compactMarks,SHORT_DIGITS,Practice,checkTiming,CODES} from './morse.js?v=20261018-4';
+import {BrowserSerial} from './web-serial.js?v=20261021-1';
+import {nextPrompt,questionComplete,retentionMs,reviewReady,BANK_FILES,parsePracticeBank,parseCallsigns} from './practice-flow.js?v=20261021-1';
+import {makeLesson,makeFreeLesson,compactMarks,SHORT_DIGITS,Practice,checkTiming,CODES} from './morse.js?v=20261021-1';
 const $=id=>document.getElementById(id),ms=n=>`${Math.round(n)} ms`,signed=n=>`${n>=0?'+':'−'}${Math.abs(Math.round(n))}`;
 const SETTINGS_COOKIE='cw_trainer_settings';
-const settingsDefaults={simulation:false,keyPin:'cts',keyPolarity:'high',rts:'high',wpm:'15',tolerance:'0.2',sound:true,autoReference:false,holdSeconds:'1.5',practiceType:'character',poolLetter:true,poolDigit:true,poolSymbol:false,zoom:'22'};
+const settingsDefaults={simulation:false,keyPin:'cts',keyPolarity:'high',rts:'high',wpm:'15',tolerance:'0.2',sound:true,sideToneHz:'700',sideToneVolume:'50',autoReference:false,holdSeconds:'1.5',practiceType:'character',poolLetter:true,poolDigit:true,poolSymbol:false,zoom:'22'};
 function validSettings(value){
  const result={...settingsDefaults};
  if(!value||typeof value!=='object')return result;
  for(const [id,choices] of Object.entries({keyPin:['cts','dsr','cd'],keyPolarity:['high','low'],rts:['high','low'],tolerance:['0.1','0.2','0.3'],practiceType:['character','word','callsign','qcode','cw','sentence','free','telegram']}))if(choices.includes(value[id]))result[id]=value[id];
 
 
- for(const [id,min,max] of [['wpm',5,40],['holdSeconds',0,30],['zoom',12,40]])if(value[id]!==''&&value[id]!=null&&Number.isFinite(Number(value[id]))&&Number(value[id])>=min&&Number(value[id])<=max)result[id]=String(value[id]);
+ for(const [id,min,max] of [['sideToneHz',300,1000],['sideToneVolume',0,100],['wpm',5,40],['holdSeconds',0,30],['zoom',12,40]])if(value[id]!==''&&value[id]!=null&&Number.isFinite(Number(value[id]))&&Number(value[id])>=min&&Number(value[id])<=max)result[id]=String(value[id]);
  for(const id of ['simulation','sound','autoReference','poolLetter','poolDigit','poolSymbol'])if(typeof value[id]==='boolean')result[id]=value[id];
  if(!result.poolLetter&&!result.poolDigit&&!result.poolSymbol)result.poolLetter=true;
  return result;
@@ -77,12 +77,19 @@ function reset(){
  $('questionNumber').textContent=selectedMode==='free'?'自由拍发':`第 ${questionNumber} 题`;
  render();return true;
 }
+function updateSideTone(){
+ const hz=Math.min(1000,Math.max(300,Number($('sideToneHz').value)||700));
+ const volume=Math.min(100,Math.max(0,Number($('sideToneVolume').value)||0));
+ $('sideToneHz').value=String(hz);$('sideToneVolume').value=String(volume);
+ $('sideToneHzValue').textContent=`${hz} Hz`;$('sideToneVolumeValue').textContent=`${volume}%`;
+ if(osc)osc.frequency.value=hz;
+}
 async function ensureAudio(force=false){
  if(!force&&!$('sound').checked)return;
- if(!audio){audio=new AudioContext();osc=audio.createOscillator();gain=audio.createGain();osc.type='sine';osc.frequency.value=700;gain.gain.value=0;osc.connect(gain);gain.connect(audio.destination);osc.start();const referenceOsc=audio.createOscillator();referenceGain=audio.createGain();referenceOsc.frequency.value=700;referenceGain.gain.value=0;referenceOsc.connect(referenceGain);referenceGain.connect(audio.destination);referenceOsc.start();}
+ if(!audio){audio=new AudioContext();osc=audio.createOscillator();gain=audio.createGain();osc.type='sine';osc.frequency.value=Number($('sideToneHz').value);gain.gain.value=0;osc.connect(gain);gain.connect(audio.destination);osc.start();const referenceOsc=audio.createOscillator();referenceGain=audio.createGain();referenceOsc.frequency.value=700;referenceGain.gain.value=0;referenceOsc.connect(referenceGain);referenceGain.connect(audio.destination);referenceOsc.start();}
  await audio.resume();
 }
-function tone(down){if(!gain)return;const t=audio.currentTime;gain.gain.cancelScheduledValues(t);gain.gain.setTargetAtTime(down && $('sound').checked ? .14 : 0,t,.002);}
+function tone(down){if(!gain)return;const t=audio.currentTime;gain.gain.cancelScheduledValues(t);gain.gain.setTargetAtTime(down && $('sound').checked ? .28*Number($('sideToneVolume').value)/100 : 0,t,.002);}
 function edge(down,t){
  if(!running)return;
  if(selectedMode==='free'&&down&&practice.downAt===null&&practice.marks.length>=200){const owner=inputOwner,offset=serialOffset;reset();inputOwner=owner;serialOffset=offset;}
@@ -110,7 +117,7 @@ async function start(input='com'){
   if(!reset())return;
   source=input;running=true;
   say(input==='keyboard'?'键盘练习已开始，按住空格或下方按钮发报。':input==='com'&&!armed?'串口已连接，请松开电键，随后即可开始发送。':'连续练习已开始，请发送本题。');
- }catch(e){if(request===operation){connecting=false;console.error('CW 开始练习失败',e);say(`无法开始练习：${e.message}（版本 20261018-4）`);}}
+ }catch(e){if(request===operation){connecting=false;console.error('CW 开始练习失败',e);say(`无法开始练习：${e.message}（版本 20261021-1）`);}}
  finally{if(request===operation){busy=false;lock();autoListen();}}
 }
 async function finish(){
@@ -331,6 +338,7 @@ $('settingsDialog').onclose=()=>{if(!closingSettings&&(checkingLevels||connected
 practiceModeUI();
 for(const id of ['wpm','tolerance'])$(id).addEventListener('input',reset);
 $('clear').onclick=changeQuestion;$('listen').onclick=()=>listen();
+$('sideToneHz').oninput=updateSideTone;$('sideToneVolume').oninput=updateSideTone;
 $('sound').onchange=()=>{tone(false);if($('sound').checked)ensureAudio().catch(e=>say(e.message));};
 for(const [id,key] of [['keyButton','key']]){
  $(id).onpointerdown=e=>{e.preventDefault();$(id).setPointerCapture(e.pointerId);keyInput(key,true);};
@@ -344,7 +352,7 @@ $('simulation').onchange=()=>{lock();say($('simulation').checked?'模拟测试�
 $('port').onchange=lock;$('zoom').oninput=render;
 $('refreshPorts').onclick=refreshPorts;$('start').onclick=()=>start($('simulation').checked?'keyboard':'com');$('finish').onclick=finish;
 if(savedSettings)applySettings({...savedSettings,practiceType:'character'});
-lock();reset();
+updateSideTone();lock();reset();
 function handleSerialPacket(packet){
   if(packet.type==='diagnostic'){
    $('serialDiagnostic').textContent=`已读取 ${packet.samples} 次 · 最近读取 ${new Date().toLocaleTimeString()} · 最大采样间隔 ${packet.maxInterval.toFixed(1)} ms · RTS ${packet.rts?'高':'低'} · DTR 低；变化次数 CTS ${packet.changes.cts} / DSR ${packet.changes.dsr} / DCD ${packet.changes.cd}`;
@@ -372,14 +380,14 @@ if(savedSettings){
  practiceModeUI();$('cookieStatus').textContent='已恢复上次保存的设置。';
 }
 for(const id of Object.keys(settingsDefaults)){
- const event=['wpm','zoom'].includes(id)?'oninput':'onchange';
+ const event=['wpm','zoom','sideToneHz','sideToneVolume'].includes(id)?'oninput':'onchange';
  const previous=$(id)[event];
  $(id)[event]=async function(e){if(previous)await previous.call(this,e);saveSettings();};
 }
 $('clearCookies').onclick=()=>{
  if(running||playing||busy||connected||connecting)return;
  document.cookie=`${SETTINGS_COOKIE}=; Max-Age=0; Path=/; SameSite=Strict`;
- applySettings(settingsDefaults);
+ applySettings(settingsDefaults);updateSideTone();
  $('port').value=$('port').options?.[0]?.value||'';
  selectedMode='character';tone(false);changeQuestion();practiceModeUI();lock();
  $('cookieStatus').textContent='已清除本程序的设置 Cookie，并恢复默认设置。';
